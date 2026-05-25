@@ -1,125 +1,146 @@
 #!/usr/bin/env bash
+# module3/scripts/capture_demo_output.sh — Capture golden output for Module 3 demo
+# Resets state, seeds data, runs each of the 4 demo steps, and saves output
+# to .run/module3/ for review before recording.
+#
+# Usage:
+#   module3/scripts/capture_demo_output.sh
+
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-LOG_FILE="$REPO_ROOT/logs/module3_capture.log"
-API_URL="http://localhost:8000"
-TMPDIR_CAP=$(mktemp -d)
+# ── Paths ────────────────────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$PROJECT_DIR"
 
-cleanup() { rm -rf "$TMPDIR_CAP"; }
-trap cleanup EXIT
-
-mkdir -p "$REPO_ROOT/logs"
-
-BOLD='\033[1m'
-GREEN='\033[0;32m'
+# ── Colors ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
+GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-step() { printf "\n${BOLD}[%s] %s${NC}\n" "$1" "$2"; }
-ok()   { printf "${GREEN}[OK]${NC}    %s\n" "$1"; }
-err()  { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
-info() { printf "${YELLOW}[INFO]${NC}  %s\n" "$1"; }
+ok()   { printf "${GREEN}[OK]${NC}   %s\n" "$1"; }
+warn() { printf "${YELLOW}[WAIT]${NC} %s\n" "$1"; }
+fail() { printf "${RED}[ERR]${NC}  %s\n" "$1"; exit 1; }
 
-{
-    echo "=============================================="
-    echo " Module 3 — Demo Output Capture"
-    echo " Captured: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-    echo "=============================================="
-} > "$LOG_FILE"
-
-log() { echo "$1" >> "$LOG_FILE"; }
-
-# Preflight
-step "0/4" "Preflight checks"
-if ! curl -sf "$API_URL/health" > /dev/null 2>&1; then
-    err "Server not running at $API_URL"
-    exit 1
-fi
-ok "Server healthy"
-
-# Log payload content
-log ""
-log "=== Payload: batch_feedback.json ==="
-cat "$REPO_ROOT/data/payloads/batch_feedback.json" >> "$LOG_FILE"
-
-# Reset metrics and seed
-info "Resetting metrics..."
-curl -sf -X POST "$API_URL/admin/reset-metrics" > /dev/null 2>&1 || true
-curl -sf -X POST "$API_URL/admin/seed-knowledge-base" > /dev/null 2>&1 || true
-ok "Metrics reset and knowledge base seeded"
-
-# Step 1: Trigger pipeline
-step "1/4" "Trigger Airflow DAG via pipeline API"
-
-curl -s -o "$TMPDIR_CAP/step1.json" \
-    -X POST "$API_URL/pipeline/trigger" \
-    -H "Content-Type: application/json" \
-    -d '{"batch_id": "BATCH-20240318-001", "source": "data/payloads/batch_feedback.json"}'
-
-log ""
-log "=== Step 1: Trigger pipeline ==="
-python3 -m json.tool < "$TMPDIR_CAP/step1.json" >> "$LOG_FILE" 2>&1
-
-info "Formatted output:"
-python3 "$REPO_ROOT/scripts/fmt.py" --type raw < "$TMPDIR_CAP/step1.json" 2>/dev/null || python3 -m json.tool < "$TMPDIR_CAP/step1.json"
-ok "Pipeline triggered"
-
-# Step 2: Show pipeline runs
-step "2/4" "Pipeline run results"
-
-curl -s -o "$TMPDIR_CAP/step2.json" "$API_URL/pipeline/runs"
-
-log ""
-log "=== Step 2: Pipeline runs ==="
-python3 -m json.tool < "$TMPDIR_CAP/step2.json" >> "$LOG_FILE" 2>&1
-
-info "Formatted output:"
-python3 "$REPO_ROOT/scripts/fmt.py" --type raw < "$TMPDIR_CAP/step2.json" 2>/dev/null || python3 -m json.tool < "$TMPDIR_CAP/step2.json"
-ok "Pipeline runs retrieved"
-
-# Step 3: Batch details
-step "3/4" "Batch enrichment details"
-
-curl -s -o "$TMPDIR_CAP/step3.json" "$API_URL/pipeline/run/BATCH-20240318-001"
-
-log ""
-log "=== Step 3: Batch details ==="
-python3 -m json.tool < "$TMPDIR_CAP/step3.json" >> "$LOG_FILE" 2>&1
-
-info "Formatted output:"
-python3 "$REPO_ROOT/scripts/fmt.py" --type batch < "$TMPDIR_CAP/step3.json" 2>/dev/null || python3 -m json.tool < "$TMPDIR_CAP/step3.json"
-ok "Batch details retrieved"
-
-# Step 4: DuckDB trusted and quarantine
-step "4/4" "DuckDB trusted output and quarantine"
-
-log ""
-log "=== Step 4: DuckDB tables ==="
-
-if command -v duckdb &>/dev/null; then
-    info "Trusted table:"
-    TRUSTED_OUT=$(cd "$REPO_ROOT" && duckdb data/northwind.duckdb \
-        "SELECT request_id, category, confidence, validation_status FROM trusted.feedback_enriched ORDER BY enriched_at DESC LIMIT 5" 2>&1)
-    echo "$TRUSTED_OUT"
-    log "trusted.feedback_enriched:"
-    log "$TRUSTED_OUT"
-
-    info "Quarantine table:"
-    QUARANTINE_OUT=$(cd "$REPO_ROOT" && duckdb data/northwind.duckdb \
-        "SELECT request_id, validation_errors FROM quarantine.llm_outputs ORDER BY quarantined_at DESC LIMIT 5" 2>&1)
-    echo "$QUARANTINE_OUT"
-    log "quarantine.llm_outputs:"
-    log "$QUARANTINE_OUT"
-else
-    info "duckdb CLI not available; skipping direct table queries"
-    log "duckdb CLI not available"
-fi
-
-ok "Step 4 complete"
+OUTDIR="$PROJECT_DIR/.run/module3"
+mkdir -p "$OUTDIR"
 
 echo ""
-echo "=============================================="
-ok "Module 3 capture complete"
-echo "Log saved to: $LOG_FILE"
+echo "========================================"
+echo " Module 3 — Capture Demo Output"
+echo "========================================"
+echo ""
+
+# ── Verify services are running ──────────────────────────────────────────────
+warn "Checking services..."
+
+if ! curl -sf http://localhost:8000/health &>/dev/null; then
+    fail "FastAPI is not running — start with module3/scripts/demo_up.sh first"
+fi
+ok "FastAPI is healthy"
+
+if ! curl -sf http://localhost:8080/health &>/dev/null; then
+    fail "Airflow is not running — start with module3/scripts/demo_up.sh first"
+fi
+ok "Airflow is healthy"
+
+# ── Reset: clear pipeline metrics for a clean capture ────────────────────────
+echo ""
+warn "Resetting pipeline state for clean capture..."
+
+# Reset by calling the metrics reset endpoint if available, otherwise proceed
+curl -sf -X POST http://localhost:8000/pipeline/reset 2>/dev/null && ok "Pipeline state reset" || warn "No reset endpoint — proceeding with current state"
+
+# ── Seed: batch-enrich the feedback payload ──────────────────────────────────
+echo ""
+warn "Seeding batch data via pipeline/batch-enrich..."
+
+SEED_RESP=$(curl -sf -X POST http://localhost:8000/pipeline/batch-enrich \
+    -H "Content-Type: application/json" \
+    -d "{\"items\": $(cat data/payloads/batch_feedback.json)}")
+
+BATCH_ID=$(echo "$SEED_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('batch_id','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
+ok "Batch seeded: $BATCH_ID"
+
+# Save seed response
+echo "$SEED_RESP" | python3 -m json.tool > "$OUTDIR/seed_response.json" 2>/dev/null || echo "$SEED_RESP" > "$OUTDIR/seed_response.json"
+ok "Seed response saved to .run/module3/seed_response.json"
+
+# ── Step 1: Trigger the Airflow DAG ─────────────────────────────────────────
+echo ""
+echo "── Step 1: Trigger DAG ──"
+
+STEP1_OUT=$(curl -s -X POST http://localhost:8000/pipeline/trigger \
+    -H "Content-Type: application/json" \
+    -d '{"batch_id": "BATCH-20240318-001", "source": "data/payloads/batch_feedback.json"}')
+
+echo "$STEP1_OUT" | python3 scripts/fmt.py --type raw > "$OUTDIR/step1_trigger.txt" 2>/dev/null || echo "$STEP1_OUT" > "$OUTDIR/step1_trigger.txt"
+ok "Step 1 output saved to .run/module3/step1_trigger.txt"
+
+echo "$STEP1_OUT" | python3 scripts/fmt.py --type raw
+echo ""
+
+# ── Step 2: Show pipeline runs (DAG graph is visual — capture the run list) ──
+echo ""
+echo "── Step 2: Pipeline Runs ──"
+
+STEP2_OUT=$(curl -s http://localhost:8000/pipeline/runs)
+
+echo "$STEP2_OUT" | python3 scripts/fmt.py --type raw > "$OUTDIR/step2_runs.txt" 2>/dev/null || echo "$STEP2_OUT" > "$OUTDIR/step2_runs.txt"
+ok "Step 2 output saved to .run/module3/step2_runs.txt"
+
+echo "$STEP2_OUT" | python3 scripts/fmt.py --type raw
+echo ""
+
+# ── Step 3: Examine batch details for traceability ──────────────────────────
+echo ""
+echo "── Step 3: Batch Details ──"
+
+STEP3_OUT=$(curl -s "http://localhost:8000/pipeline/run/$BATCH_ID")
+
+echo "$STEP3_OUT" | python3 scripts/fmt.py --type batch > "$OUTDIR/step3_batch.txt" 2>/dev/null || echo "$STEP3_OUT" > "$OUTDIR/step3_batch.txt"
+ok "Step 3 output saved to .run/module3/step3_batch.txt"
+
+echo "$STEP3_OUT" | python3 scripts/fmt.py --type batch
+echo ""
+
+# ── Step 4: Verify DuckDB trusted and quarantine tables ─────────────────────
+echo ""
+echo "── Step 4: DuckDB Verification ──"
+
+DUCKDB_PATH="$PROJECT_DIR/data/northwind.duckdb"
+
+STEP4A_OUT=""
+STEP4B_OUT=""
+
+if command -v duckdb &>/dev/null && [[ -f "$DUCKDB_PATH" ]]; then
+    STEP4A_OUT=$(duckdb "$DUCKDB_PATH" "SELECT request_id, category, confidence, validation_status FROM trusted.feedback_enriched ORDER BY enriched_at DESC LIMIT 5" 2>&1 || echo "(query failed — table may not exist yet)")
+    STEP4B_OUT=$(duckdb "$DUCKDB_PATH" "SELECT request_id, validation_errors FROM quarantine.llm_outputs ORDER BY quarantined_at DESC LIMIT 5" 2>&1 || echo "(query failed — table may not exist yet)")
+else
+    STEP4A_OUT="(duckdb CLI not available or database file not found)"
+    STEP4B_OUT="(duckdb CLI not available or database file not found)"
+fi
+
+echo "$STEP4A_OUT" > "$OUTDIR/step4_trusted.txt"
+echo "$STEP4B_OUT" > "$OUTDIR/step4_quarantine.txt"
+ok "Step 4 trusted output saved to .run/module3/step4_trusted.txt"
+ok "Step 4 quarantine output saved to .run/module3/step4_quarantine.txt"
+
+echo ""
+echo "trusted.feedback_enriched:"
+echo "$STEP4A_OUT"
+echo ""
+echo "quarantine.llm_outputs:"
+echo "$STEP4B_OUT"
+echo ""
+
+# ── Summary ──────────────────────────────────────────────────────────────────
+echo "========================================"
+echo " Captured files:"
+echo ""
+ls -la "$OUTDIR"/
+echo ""
+ok "All 4 demo steps captured to .run/module3/"
+echo "  Review output before recording."
+echo "========================================"
