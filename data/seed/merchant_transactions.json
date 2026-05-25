@@ -1,0 +1,8 @@
+[
+  {"txn_id": "TXN-9001", "merchant_id": "M-101", "amount": 79.99, "type": "sale", "created_at": "2024-03-10T14:25:00Z"},
+  {"txn_id": "TXN-9002", "merchant_id": "M-102", "amount": 45.50, "type": "sale", "created_at": "2024-03-11T09:35:00Z"},
+  {"txn_id": "TXN-9003", "merchant_id": "M-101", "amount": 79.99, "type": "refund", "created_at": "2024-03-16T10:05:00Z"},
+  {"txn_id": "TXN-9004", "merchant_id": "M-103", "amount": 34.99, "type": "sale", "created_at": "2024-03-12T10:05:00Z"},
+  {"txn_id": "TXN-9005", "merchant_id": "M-103", "amount": 34.99, "type": "chargeback", "created_at": "2024-03-18T11:30:00Z"},
+  {"txn_id": "TXN-9006", "merchant_id": "M-102", "amount": 45.50, "type": "sale", "created_at": "2024-03-13T11:20:00Z"}
+]

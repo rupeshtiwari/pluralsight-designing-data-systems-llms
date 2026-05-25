@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+build/
+data/northwind.duckdb
+data/northwind.duckdb.wal
+logs/
+.run/
+.env
+*.log
+.DS_Store

@@ -1,0 +1,54 @@
+[
+  {
+    "feedback_id": 201,
+    "customer_id": "C-1007",
+    "product_id": "P-1010",
+    "feedback_text": "The headphones stopped working after two days. Completely defective unit.",
+    "enriched": {
+      "classification": "product_quality",
+      "sentiment": "negative",
+      "confidence": 0.94,
+      "source_doc_ids": ["DOC-001", "DOC-007"],
+      "recommended_action": "initiate_return"
+    }
+  },
+  {
+    "feedback_id": 202,
+    "customer_id": "C-1002",
+    "product_id": "P-3021",
+    "feedback_text": "Package was delivered three days late and the box was damaged.",
+    "enriched": {
+      "classification": "logistics_fulfillment",
+      "sentiment": "negative",
+      "confidence": 0.88,
+      "source_doc_ids": ["DOC-003"],
+      "recommended_action": "shipping_credit"
+    }
+  },
+  {
+    "feedback_id": 203,
+    "customer_id": "C-1009",
+    "product_id": "P-2050",
+    "feedback_text": "Great value for money. The blender works perfectly for daily smoothies.",
+    "enriched": {
+      "classification": "general_praise",
+      "sentiment": "positive",
+      "confidence": 0.91,
+      "source_doc_ids": [],
+      "recommended_action": "no_action"
+    }
+  },
+  {
+    "feedback_id": 204,
+    "customer_id": "C-1004",
+    "product_id": "P-2050",
+    "feedback_text": "Price increased 40 percent since last month with no improvement in quality.",
+    "enriched": {
+      "classification": "pricing_concern",
+      "sentiment": "negative",
+      "confidence": 0.62,
+      "source_doc_ids": ["DOC-007"],
+      "recommended_action": "escalate_to_pricing_team"
+    }
+  }
+]

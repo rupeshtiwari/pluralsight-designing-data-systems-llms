@@ -1,0 +1,6 @@
+{
+  "refund_id": "R-5001",
+  "order_id": "ORD-7001",
+  "reason": "Product arrived damaged with visible dents on the exterior casing and one of the attachment accessories was missing from the box",
+  "customer_history": {"total_orders": 12, "previous_returns": 1, "account_age_months": 18, "segment": "premium"}
+}

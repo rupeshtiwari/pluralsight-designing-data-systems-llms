@@ -1,0 +1,32 @@
+[
+  {
+    "feedback_id": 101,
+    "customer_id": "C-1002",
+    "product_id": "P-3021",
+    "feedback_text": "The towel set frayed after the first wash and the stitching came apart. Very poor quality."
+  },
+  {
+    "feedback_id": 102,
+    "customer_id": "C-1006",
+    "product_id": "P-1010",
+    "feedback_text": "Sound quality on these headphones is outstanding and the battery lasts all day. Highly recommend."
+  },
+  {
+    "feedback_id": 103,
+    "customer_id": "C-1004",
+    "product_id": "P-2050",
+    "feedback_text": "The blender is okay I guess. It works but the lid feels loose sometimes. Not sure if I should return it or keep it."
+  },
+  {
+    "feedback_id": 104,
+    "customer_id": "C-1005",
+    "product_id": "P-9999",
+    "feedback_text": "This product broke on the first use. The handle snapped right off when I tried to open it."
+  },
+  {
+    "feedback_id": 105,
+    "customer_id": "C-1003",
+    "product_id": "P-4015",
+    "feedback_text": "The winter holiday gift bundle packaging was beautiful and arrived before the December deadline."
+  }
+]

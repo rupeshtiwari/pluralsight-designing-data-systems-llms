@@ -1,0 +1,7 @@
+{
+  "incident_id": "INC-3001",
+  "metric_name": "daily_order_row_count",
+  "expected_value": 1500,
+  "actual_value": 890,
+  "context": "Daily orders pipeline detected 40 percent fewer rows than the 7-day rolling average. Source system API returned 200 status. No schema changes detected."
+}

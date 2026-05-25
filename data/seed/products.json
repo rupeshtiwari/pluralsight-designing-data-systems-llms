@@ -1,0 +1,7 @@
+[
+  {"product_id": "P-1010", "name": "ProSound Wireless Headphones", "category": "electronics", "price": 129.99, "vendor_id": "M-102", "status": "active"},
+  {"product_id": "P-2050", "name": "TurboBlend Pro Kitchen Blender", "category": "kitchen_appliances", "price": 79.99, "vendor_id": "M-101", "status": "active"},
+  {"product_id": "P-3021", "name": "EcoFresh Cotton Bath Towel Set", "category": "home_goods", "price": 45.50, "vendor_id": "M-102", "status": "active"},
+  {"product_id": "P-4015", "name": "AquaFit Insulated Water Bottle", "category": "sports_outdoors", "price": 34.99, "vendor_id": "M-103", "status": "active"},
+  {"product_id": "P-5005", "name": "SmartHome Hub Controller", "category": "electronics", "price": 219.00, "vendor_id": "M-101", "status": "active"}
+]
