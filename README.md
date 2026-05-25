@@ -127,26 +127,180 @@ module3/scripts/demo_up.sh
 
 ## Recording workflow
 
-For each module demo clip:
+Follow these steps for each module demo clip. Do not skip validation — every narration claim must have on-screen proof before you hit record.
 
-1. **Preflight**: `moduleN/scripts/preflight_check.sh`
-2. **Validate**: `scripts/validate_moduleN.sh` (produces plain-text log for GPT review)
-3. **Capture**: `moduleN/scripts/capture_demo_output.sh` (captures formatted output)
-4. **Review**: verify every narration claim matches capture output
-5. **Record**: open tmux session and follow the README runbook
-6. **Cleanup**: `moduleN/scripts/demo_down.sh`
+### Step 1: Start the demo environment
 
-## Validation scripts
+```bash
+# Modules 1-2 (local server)
+moduleN/scripts/demo_up.sh
 
-Each `scripts/validate_moduleN.sh` produces a plain-text log at `logs/moduleN_validation.txt` that records:
+# Modules 3-4 (Docker Compose stack)
+moduleN/scripts/demo_up.sh   # starts docker compose + tmux
+```
 
-- The exact command for each demo step
-- The exact input payload content
-- The raw JSON response (unformatted)
-- The expected output from the recording runbook
-- A comparison checklist
+This launches a tmux session with two panes (server logs on top, demo commands on bottom), waits for the server to be healthy, seeds the knowledge base, and resets metrics. The server starts off-camera — the recording opens with a health check, not a boot sequence.
 
-Hand this file to GPT or a reviewer to verify every demo step produces the expected output before recording.
+### Step 2: Run preflight checks
+
+```bash
+moduleN/scripts/preflight_check.sh
+```
+
+Verifies the server is healthy, databases have seed data, payload files exist, required tables are present, and (for modules 3-4) all Docker containers are running. Every check prints PASS or FAIL. Fix all failures before proceeding.
+
+### Step 3: Run the validation log
+
+```bash
+scripts/validate_moduleN.sh
+```
+
+This is the key pre-recording gate. The script runs every demo step from the recording runbook and writes a structured plain-text log to `logs/moduleN_validation.txt`. The log contains:
+
+- The exact command for each step
+- The full input payload content (copied from `data/payloads/`, never from `/tmp/`)
+- The raw JSON response from the server
+- The expected output described in the recording runbook
+- Extracted key values (request_id, category, confidence, etc.)
+- A validation checklist with `[ ]` checkboxes for each claim
+
+### Step 4: Review the validation log with GPT
+
+Open the validation log and paste it into GPT (or another reviewer) with a prompt like:
+
+```
+Review this validation log for a Pluralsight course demo recording.
+For each VALIDATION CHECKLIST section, check whether the ACTUAL OUTPUT
+satisfies every checklist item. Mark each item as PASS or FAIL.
+If any item fails, explain what went wrong and suggest a fix.
+At the end, give a GO / NO-GO verdict for recording.
+```
+
+Alternatively, review the log yourself by scanning each checklist section:
+
+```bash
+# Quick scan: show only checklist lines and extracted values
+grep -E '^\s+\[ \]|EXTRACTED VALUES|ACTUAL OUTPUT' logs/moduleN_validation.txt
+```
+
+If any checklist item fails, fix the underlying issue (payload, LLM stub keyword matching, validation threshold, seed data) and re-run the validation script until all items pass.
+
+### Step 5: Run the capture script
+
+```bash
+moduleN/scripts/capture_demo_output.sh
+```
+
+This runs the same demo steps but pipes output through `scripts/fmt.py` for Pluralsight-branded color formatting. Use the capture output to verify that the formatted terminal display looks correct at recording zoom. The capture also saves raw JSON alongside formatted output for comparison.
+
+### Step 6: Record
+
+```bash
+tmux attach -t mN-demo
+```
+
+Follow the recording runbook in `moduleN/README.md` step by step. Every command is pre-validated — type them exactly as written. The tmux panes are already configured with Pluralsight brand colors, hidden status bar, and clean prompt.
+
+### Step 7: Cleanup
+
+```bash
+moduleN/scripts/demo_down.sh
+```
+
+Kills the tmux session. For modules 3-4, this also runs `docker compose down`.
+
+### Summary: command sequence per module
+
+```bash
+# Replace N with 1, 2, 3, or 4
+moduleN/scripts/demo_up.sh              # 1. Start environment (off-camera)
+moduleN/scripts/preflight_check.sh      # 2. Verify everything is ready
+scripts/validate_moduleN.sh             # 3. Generate validation log
+# Review logs/moduleN_validation.txt    # 4. GPT review → GO / NO-GO
+moduleN/scripts/capture_demo_output.sh  # 5. Capture formatted output
+tmux attach -t mN-demo                  # 6. Record (follow README runbook)
+moduleN/scripts/demo_down.sh            # 7. Cleanup
+```
+
+## Validation scripts — detailed reference
+
+Each `scripts/validate_moduleN.sh` produces a plain-text log at `logs/moduleN_validation.txt` with this structure:
+
+```
+MODULE N VALIDATION LOG
+=======================
+Module:  [module title]
+Clip:    [clip title]
+Date:    [UTC timestamp]
+LOs:     [covered learning objectives]
+
+========================================================================
+PREFLIGHT
+========================================================================
+Server health: { ... }
+Resetting metrics... OK
+Seeding knowledge base... OK
+
+========================================================================
+STEP 1: [step title from runbook] (LO Xn)
+========================================================================
+COMMAND:
+  [exact command from the runbook]
+
+INPUT PAYLOAD (data/payloads/xxx.json):
+  { ... full payload content ... }
+
+ACTUAL OUTPUT (raw JSON):
+  { ... complete server response ... }
+
+EXPECTED OUTPUT:
+  [what the runbook says should appear]
+
+EXTRACTED VALUES:
+  request_id:        abc-123
+  category:          product_quality
+  confidence:        0.89
+  validation_status: accepted
+
+VALIDATION CHECKLIST:
+  [ ] request_id is a valid UUID
+  [ ] category = product_quality
+  [ ] confidence >= 0.75
+  [ ] validation_status = accepted
+
+... (repeats for each step) ...
+
+========================================================================
+SUMMARY
+========================================================================
+Proof points to verify:
+  1. [first proof point]
+  2. [second proof point]
+  ...
+```
+
+### What each section means
+
+| Section | Purpose |
+|---------|---------|
+| COMMAND | The exact shell command from the recording runbook — what you will type on camera |
+| INPUT PAYLOAD | The full JSON payload file content, read from `data/payloads/` (never `/tmp/`) |
+| ACTUAL OUTPUT | The raw, unformatted JSON response from the server |
+| EXPECTED OUTPUT | What the recording runbook says should appear on screen |
+| EXTRACTED VALUES | Key fields pulled from the actual output for quick comparison |
+| VALIDATION CHECKLIST | One checkbox per claim in the runbook — each must pass before recording |
+
+### Troubleshooting common failures
+
+| Failure | Likely cause | Fix |
+|---------|-------------|-----|
+| category is wrong | LLM stub keyword matching missed the payload text | Update keyword lists in `app/services/llm_stub.py` |
+| confidence below threshold | Stub returns a value below 0.75 | Adjust confidence logic in `llm_stub.py` or lower threshold in `app/config.py` |
+| source_doc_ids empty | pgvector retrieval found no matching docs | Verify seed docs in `data/seed/reference_docs.json` match doc_type filter |
+| validation_status = failed | One or more validation checks failed | Check the errors list for the specific failure and fix the root cause |
+| request_id not found in decisions | Decision stored under different endpoint key | Check `app/routers/enrichment.py` stores to `llm_decisions` correctly |
+| DuckDB table empty | Seed data not loaded or enrichment not run | Re-run `/admin/seed-knowledge-base` and verify with a test enrichment call |
+| Server not running | demo_up.sh not executed or port conflict | Run `moduleN/scripts/demo_up.sh` and check `lsof -i :8000` |
 
 ## API endpoints
 

@@ -95,6 +95,20 @@ duckdb data/northwind.duckdb "SELECT request_id, validation_errors FROM quaranti
 ## Callout
 Monitor dispositions, not just task success
 
+## Pre-recording validation
+
+Before recording, run the validation script to generate a plain-text log with the exact input and output for every step above:
+
+```bash
+scripts/validate_module3.sh
+```
+
+This writes `logs/module3_validation.txt` with each command, full payload, raw JSON response, expected output, and a checklist. Paste the log into GPT with:
+
+> Review this validation log. For each VALIDATION CHECKLIST, mark items PASS or FAIL based on the ACTUAL OUTPUT. Give a GO / NO-GO verdict.
+
+Do not record until all checklist items pass.
+
 ## Cleanup
 Run `module3/scripts/demo_down.sh` after recording (stops Docker Compose stack)
 
