@@ -34,7 +34,7 @@ router = APIRouter(prefix="/validate", tags=["validation"])
 class ValidateOutputRequest(BaseModel):
     output: dict[str, Any]
     required_fields: list[str] | None = None
-    known_doc_ids: list[int] | None = None
+    known_doc_ids: list[str | int] | None = None
 
 
 class BatchReportRequest(BaseModel):

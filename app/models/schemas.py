@@ -2,9 +2,9 @@ from pydantic import BaseModel, Field
 
 
 class FeedbackEnrichRequest(BaseModel):
-    feedback_id: int
-    customer_id: int
-    product_id: int
+    feedback_id: int | str
+    customer_id: str
+    product_id: str
     feedback_text: str
 
 
@@ -13,15 +13,15 @@ class FeedbackEnrichResponse(BaseModel):
     category: str
     summary: str
     confidence: float
-    source_doc_ids: list[int]
+    source_doc_ids: list[str | int]
     validation_status: str
 
 
 class DisputeSummaryRequest(BaseModel):
-    refund_id: int
-    order_id: int
+    refund_id: str
+    order_id: str
     reason: str
-    customer_history: list[dict] = Field(default_factory=list)
+    customer_history: dict = Field(default_factory=dict)
 
 
 class DisputeSummaryResponse(BaseModel):
@@ -30,7 +30,7 @@ class DisputeSummaryResponse(BaseModel):
     risk_level: str
     key_factors: list[str]
     confidence: float
-    source_doc_ids: list[int]
+    source_doc_ids: list[str | int]
 
 
 class AnomalyTriageRequest(BaseModel):
@@ -51,7 +51,7 @@ class AnomalyTriageResponse(BaseModel):
 
 
 class CatalogEnrichRequest(BaseModel):
-    product_id: int
+    product_id: str
     raw_description: str
     existing_metadata: dict = Field(default_factory=dict)
 
@@ -61,7 +61,7 @@ class CatalogEnrichResponse(BaseModel):
     enhanced_description: str
     extracted_attributes: dict
     confidence: float
-    source_doc_ids: list[int]
+    source_doc_ids: list[str | int]
     validation_status: str
 
 

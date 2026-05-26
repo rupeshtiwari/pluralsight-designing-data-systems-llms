@@ -90,7 +90,16 @@ else
     fail "requirements.txt not found — skipping dependency install"
 fi
 
-# ── 6. Docker Desktop check ──────────────────────────────────────────────────
+# ── 6. DuckDB CLI ───────────────────────────────────────────────────────────
+if command -v duckdb &>/dev/null; then
+    ok "DuckDB CLI already installed ($(duckdb --version 2>&1 | head -1))"
+else
+    warn "DuckDB CLI not found — installing via Homebrew..."
+    brew install duckdb
+    ok "DuckDB CLI installed ($(duckdb --version 2>&1 | head -1))"
+fi
+
+# ── 7. Docker Desktop check ──────────────────────────────────────────────────
 if command -v docker &>/dev/null; then
     if docker info &>/dev/null 2>&1; then
         ok "Docker Desktop is installed and running"
@@ -104,7 +113,7 @@ else
     fail "Docker is required for PostgreSQL (pgvector) and Airflow services."
 fi
 
-# ── 7. Required directories ──────────────────────────────────────────────────
+# ── 8. Required directories ──────────────────────────────────────────────────
 for dir in logs .run data data/seed airflow/dags airflow/plugins; do
     if [[ -d "$PROJECT_DIR/$dir" ]]; then
         ok "Directory $dir/ already exists"
@@ -114,7 +123,7 @@ for dir in logs .run data data/seed airflow/dags airflow/plugins; do
     fi
 done
 
-# ── 8. Verification ──────────────────────────────────────────────────────────
+# ── 9. Verification ──────────────────────────────────────────────────────────
 echo ""
 echo "── Verification ─────────────────────────────────────────"
 
@@ -125,6 +134,14 @@ if tmux -V &>/dev/null; then
     ok "tmux: $(tmux -V)"
 else
     fail "tmux verification failed"
+    ERRORS=$((ERRORS + 1))
+fi
+
+# DuckDB CLI
+if command -v duckdb &>/dev/null; then
+    ok "duckdb CLI: $(duckdb --version 2>&1 | head -1)"
+else
+    fail "duckdb CLI not found"
     ERRORS=$((ERRORS + 1))
 fi
 

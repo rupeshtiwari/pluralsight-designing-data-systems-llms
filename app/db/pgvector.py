@@ -6,6 +6,8 @@ we return deterministic fake results.
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 import structlog
@@ -18,51 +20,74 @@ log = structlog.get_logger(__name__)
 # ---------------------------------------------------------------------------
 _REFERENCE_DOCS: list[dict[str, Any]] = [
     {
-        "doc_id": 1,
-        "title": "Product Quality Standards",
-        "content": "All NorthWind products must meet ISO-9001 quality standards...",
+        "doc_id": "DOC-001",
+        "title": "Product quality standards and defect classification",
+        "content": "NorthWind Markets requires all vendors to meet quality tier standards. Defective products are classified as: cosmetic damage (tier 1), functional impairment (tier 2), or safety hazard (tier 3).",
         "doc_type": "policy",
     },
     {
-        "doc_id": 2,
-        "title": "Shipping SLA Guidelines",
-        "content": "Standard shipping within 5 business days; expedited within 2...",
+        "doc_id": "DOC-002",
+        "title": "Return and refund processing guidelines",
+        "content": "Returns are accepted within 30 days of delivery. Refunds are processed within 5 business days of return receipt.",
         "doc_type": "policy",
     },
     {
-        "doc_id": 3,
-        "title": "Return & Refund Policy",
-        "content": "Customers may return items within 30 days for a full refund...",
+        "doc_id": "DOC-003",
+        "title": "Shipping SLA and delay escalation procedures",
+        "content": "Standard shipping SLA is 3-5 business days. Delays exceeding 2 business days beyond SLA trigger automatic customer notification.",
         "doc_type": "policy",
     },
     {
-        "doc_id": 4,
-        "title": "Anomaly Runbook - Order Pipeline",
-        "content": (
-            "Step 1: Check data freshness. Step 2: Verify upstream source. "
-            "Step 3: Compare row counts. Step 4: Escalate if delta > 10%."
-        ),
+        "doc_id": "DOC-004",
+        "title": "Merchant transaction monitoring and risk assessment",
+        "content": "Merchant transactions are monitored for anomalies including chargeback rates exceeding 2 percent.",
+        "doc_type": "policy",
+    },
+    {
+        "doc_id": "DOC-005",
+        "title": "Data quality incident triage runbook",
+        "content": "When a data quality alert fires: 1. Check source system health. 2. Query metadata for last successful load. 3. Compare expected versus actual row counts. 4. If deviation exceeds 10 percent, classify as high severity.",
         "doc_type": "runbook",
     },
     {
-        "doc_id": 5,
-        "title": "Anomaly Runbook - Inventory Drift",
-        "content": (
-            "Step 1: Reconcile warehouse counts. Step 2: Check recent shipments. "
-            "Step 3: Flag discrepancies > 5 units."
-        ),
-        "doc_type": "runbook",
-    },
-    {
-        "doc_id": 6,
-        "title": "Catalog Enrichment Guidelines",
-        "content": (
-            "Product descriptions should include material, origin, and use-case. "
-            "Attributes must conform to the NorthWind product taxonomy."
-        ),
+        "doc_id": "DOC-006",
+        "title": "Product catalog metadata standards",
+        "content": "Every product listing must include: product name, category, subcategory, price, weight, dimensions, material, color options, and vendor ID.",
         "doc_type": "guideline",
     },
+    {
+        "doc_id": "DOC-007",
+        "title": "Customer feedback classification taxonomy",
+        "content": "Feedback is classified into: product_quality, shipping_delay, customer_service, pricing_concern, return_request, general_praise. Each classification requires confidence above 0.75.",
+        "doc_type": "policy",
+    },
+    {
+        "doc_id": "DOC-008",
+        "title": "Pipeline anomaly detection and response procedures",
+        "content": "Anomaly detection monitors: row count deviations, schema drift, null rate spikes, value distribution shifts, and freshness violations.",
+        "doc_type": "runbook",
+    },
 ]
+
+
+def seed_from_file(file_path: str) -> int:
+    path = Path(file_path)
+    if not path.exists():
+        log.warning("seed_file_not_found", path=str(path))
+        return len(_REFERENCE_DOCS)
+    data = json.loads(path.read_text())
+    docs = data if isinstance(data, list) else []
+    if docs:
+        _REFERENCE_DOCS.clear()
+        for doc in docs:
+            _REFERENCE_DOCS.append({
+                "doc_id": doc.get("id", doc.get("doc_id")),
+                "title": doc.get("title", ""),
+                "content": doc.get("content", ""),
+                "doc_type": doc.get("doc_type", "policy"),
+            })
+    log.info("pgvector.seeded", count=len(_REFERENCE_DOCS))
+    return len(_REFERENCE_DOCS)
 
 
 async def retrieve_similar_docs(

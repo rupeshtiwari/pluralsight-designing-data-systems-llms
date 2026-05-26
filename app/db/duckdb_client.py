@@ -51,8 +51,8 @@ def init_tables() -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS raw.feedback (
             id INTEGER,
-            customer_id INTEGER,
-            product_id INTEGER,
+            customer_id VARCHAR,
+            product_id VARCHAR,
             feedback_text VARCHAR,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -60,9 +60,9 @@ def init_tables() -> None:
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS raw.orders (
-            order_id INTEGER,
-            customer_id INTEGER,
-            product_id INTEGER,
+            order_id VARCHAR,
+            customer_id VARCHAR,
+            product_id VARCHAR,
             amount DOUBLE,
             status VARCHAR,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -71,8 +71,8 @@ def init_tables() -> None:
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS raw.refunds (
-            refund_id INTEGER,
-            order_id INTEGER,
+            refund_id VARCHAR,
+            order_id VARCHAR,
             reason VARCHAR,
             amount DOUBLE,
             status VARCHAR,
@@ -82,8 +82,8 @@ def init_tables() -> None:
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS raw.merchant_transactions (
-            txn_id INTEGER,
-            merchant_id INTEGER,
+            txn_id VARCHAR,
+            merchant_id VARCHAR,
             amount DOUBLE,
             type VARCHAR,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -92,10 +92,10 @@ def init_tables() -> None:
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS trusted.feedback_enriched (
-            id INTEGER,
+            id VARCHAR,
             request_id VARCHAR,
-            customer_id INTEGER,
-            product_id INTEGER,
+            customer_id VARCHAR,
+            product_id VARCHAR,
             feedback_text VARCHAR,
             category VARCHAR,
             summary VARCHAR,
@@ -120,153 +120,90 @@ def init_tables() -> None:
     logger.info("duckdb_tables_initialized")
 
 
-def seed_feedback(file_path: str) -> int:
+def _load_json_or_csv(file_path: str) -> list[dict]:
     path = Path(file_path)
     if not path.exists():
         logger.warning("seed_file_not_found", path=str(path))
-        return 0
-
-    conn = get_connection()
-    count = 0
-
+        return []
+    if path.suffix == ".json":
+        data = json.loads(path.read_text())
+        return data if isinstance(data, list) else list(data.values())[0] if data else []
     if path.suffix == ".csv":
         with open(path, newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                conn.execute(
-                    "INSERT INTO raw.feedback (id, customer_id, product_id, feedback_text, created_at) VALUES (?, ?, ?, ?, ?)",
-                    [
-                        int(row["id"]),
-                        int(row["customer_id"]),
-                        int(row["product_id"]),
-                        row["feedback_text"],
-                        row.get("created_at", datetime.now(timezone.utc).isoformat()),
-                    ],
-                )
-                count += 1
-    elif path.suffix == ".json":
-        data = json.loads(path.read_text())
-        items = data if isinstance(data, list) else data.get("feedback", [])
-        for row in items:
-            conn.execute(
-                "INSERT INTO raw.feedback (id, customer_id, product_id, feedback_text, created_at) VALUES (?, ?, ?, ?, ?)",
-                [
-                    row["id"],
-                    row["customer_id"],
-                    row["product_id"],
-                    row["feedback_text"],
-                    row.get("created_at", datetime.now(timezone.utc).isoformat()),
-                ],
-            )
-            count += 1
+            return list(csv.DictReader(f))
+    return []
 
-    logger.info("seed_feedback_loaded", count=count, source=str(path))
-    return count
+
+def seed_feedback(file_path: str) -> int:
+    rows = _load_json_or_csv(file_path)
+    if not rows:
+        return 0
+    conn = get_connection()
+    existing = conn.execute("SELECT count(*) FROM raw.feedback").fetchone()[0]
+    if existing > 0:
+        return existing
+    for row in rows:
+        conn.execute(
+            "INSERT INTO raw.feedback (id, customer_id, product_id, feedback_text, created_at) VALUES (?, ?, ?, ?, ?)",
+            [row["id"], row["customer_id"], row["product_id"], row["feedback_text"],
+             row.get("created_at", datetime.now(timezone.utc).isoformat())],
+        )
+    logger.info("seed_feedback_loaded", count=len(rows), source=file_path)
+    return len(rows)
 
 
 def seed_orders(file_path: str) -> int:
-    path = Path(file_path)
-    if not path.exists():
-        logger.warning("seed_file_not_found", path=str(path))
+    rows = _load_json_or_csv(file_path)
+    if not rows:
         return 0
-
     conn = get_connection()
-    count = 0
-
-    if path.suffix == ".csv":
-        with open(path, newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                conn.execute(
-                    "INSERT INTO raw.orders (order_id, customer_id, product_id, amount, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    [
-                        int(row["order_id"]),
-                        int(row["customer_id"]),
-                        int(row["product_id"]),
-                        float(row["amount"]),
-                        row["status"],
-                        row.get("created_at", datetime.now(timezone.utc).isoformat()),
-                    ],
-                )
-                count += 1
-    elif path.suffix == ".json":
-        data = json.loads(path.read_text())
-        items = data if isinstance(data, list) else data.get("orders", [])
-        for row in items:
-            conn.execute(
-                "INSERT INTO raw.orders (order_id, customer_id, product_id, amount, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                [
-                    row["order_id"],
-                    row["customer_id"],
-                    row["product_id"],
-                    row["amount"],
-                    row["status"],
-                    row.get("created_at", datetime.now(timezone.utc).isoformat()),
-                ],
-            )
-            count += 1
-
-    logger.info("seed_orders_loaded", count=count, source=str(path))
-    return count
+    existing = conn.execute("SELECT count(*) FROM raw.orders").fetchone()[0]
+    if existing > 0:
+        return existing
+    for row in rows:
+        conn.execute(
+            "INSERT INTO raw.orders (order_id, customer_id, product_id, amount, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            [row["order_id"], row["customer_id"], row["product_id"], float(row["amount"]),
+             row["status"], row.get("created_at", datetime.now(timezone.utc).isoformat())],
+        )
+    logger.info("seed_orders_loaded", count=len(rows), source=file_path)
+    return len(rows)
 
 
 def seed_refunds(file_path: str) -> int:
-    path = Path(file_path)
-    if not path.exists():
-        logger.warning("seed_file_not_found", path=str(path))
+    rows = _load_json_or_csv(file_path)
+    if not rows:
         return 0
-
     conn = get_connection()
-    count = 0
-
-    if path.suffix == ".csv":
-        with open(path, newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                conn.execute(
-                    "INSERT INTO raw.refunds (refund_id, order_id, reason, amount, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    [
-                        int(row["refund_id"]),
-                        int(row["order_id"]),
-                        row["reason"],
-                        float(row["amount"]),
-                        row["status"],
-                        row.get("created_at", datetime.now(timezone.utc).isoformat()),
-                    ],
-                )
-                count += 1
-
-    logger.info("seed_refunds_loaded", count=count, source=str(path))
-    return count
+    existing = conn.execute("SELECT count(*) FROM raw.refunds").fetchone()[0]
+    if existing > 0:
+        return existing
+    for row in rows:
+        conn.execute(
+            "INSERT INTO raw.refunds (refund_id, order_id, reason, amount, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            [row["refund_id"], row["order_id"], row["reason"], float(row["amount"]),
+             row["status"], row.get("created_at", datetime.now(timezone.utc).isoformat())],
+        )
+    logger.info("seed_refunds_loaded", count=len(rows), source=file_path)
+    return len(rows)
 
 
 def seed_merchant_transactions(file_path: str) -> int:
-    path = Path(file_path)
-    if not path.exists():
-        logger.warning("seed_file_not_found", path=str(path))
+    rows = _load_json_or_csv(file_path)
+    if not rows:
         return 0
-
     conn = get_connection()
-    count = 0
-
-    if path.suffix == ".csv":
-        with open(path, newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                conn.execute(
-                    "INSERT INTO raw.merchant_transactions (txn_id, merchant_id, amount, type, created_at) VALUES (?, ?, ?, ?, ?)",
-                    [
-                        int(row["txn_id"]),
-                        int(row["merchant_id"]),
-                        float(row["amount"]),
-                        row["type"],
-                        row.get("created_at", datetime.now(timezone.utc).isoformat()),
-                    ],
-                )
-                count += 1
-
-    logger.info("seed_merchant_transactions_loaded", count=count, source=str(path))
-    return count
+    existing = conn.execute("SELECT count(*) FROM raw.merchant_transactions").fetchone()[0]
+    if existing > 0:
+        return existing
+    for row in rows:
+        conn.execute(
+            "INSERT INTO raw.merchant_transactions (txn_id, merchant_id, amount, type, created_at) VALUES (?, ?, ?, ?, ?)",
+            [row["txn_id"], row["merchant_id"], float(row["amount"]),
+             row["type"], row.get("created_at", datetime.now(timezone.utc).isoformat())],
+        )
+    logger.info("seed_merchant_transactions_loaded", count=len(rows), source=file_path)
+    return len(rows)
 
 
 def get_table_count(schema: str, table: str) -> int:

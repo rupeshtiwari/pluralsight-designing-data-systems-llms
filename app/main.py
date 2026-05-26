@@ -2,6 +2,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import AsyncGenerator
 
+import logging
+
 import structlog
 from fastapi import FastAPI
 
@@ -9,10 +11,10 @@ from app.config import BASE_DIR, LOG_LEVEL
 from app.db import duckdb_client
 from app.routers import agent, enrichment, pipeline, validation
 
+_LOG_LEVELS = {"DEBUG": logging.DEBUG, "INFO": logging.INFO, "WARNING": logging.WARNING, "ERROR": logging.ERROR}
+
 structlog.configure(
-    wrapper_class=structlog.make_filtering_bound_logger(
-        getattr(structlog, LOG_LEVEL, structlog.INFO)
-    ),
+    wrapper_class=structlog.make_filtering_bound_logger(_LOG_LEVELS.get(LOG_LEVEL, logging.INFO)),
     processors=[
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
@@ -39,17 +41,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     seed_dir = BASE_DIR / "data" / "seed"
     if seed_dir.exists():
-        duckdb_client.seed_feedback(str(seed_dir / "feedback.csv"))
-        duckdb_client.seed_orders(str(seed_dir / "orders.csv"))
-        duckdb_client.seed_refunds(str(seed_dir / "refunds.csv"))
-        duckdb_client.seed_merchant_transactions(str(seed_dir / "merchant_transactions.csv"))
-
-    try:
-        from app.db import postgres_client
-        postgres_client.init_tables()
-        postgres_client.seed_reference_docs()
-    except Exception:
-        logger.warning("postgres_init_skipped", reason="connection unavailable")
+        duckdb_client.seed_feedback(str(seed_dir / "feedback.json"))
+        duckdb_client.seed_orders(str(seed_dir / "orders.json"))
+        duckdb_client.seed_refunds(str(seed_dir / "refunds.json"))
+        duckdb_client.seed_merchant_transactions(str(seed_dir / "merchant_transactions.json"))
 
     _metrics["startup_at"] = datetime.now(timezone.utc).isoformat()
     logger.info("startup_complete")
@@ -57,11 +52,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     duckdb_client.close_connection()
-    try:
-        from app.db import postgres_client
-        postgres_client.close_connection()
-    except Exception:
-        pass
     logger.info("shutdown_complete")
 
 
@@ -95,13 +85,9 @@ async def reset_metrics() -> dict:
 
 @app.post("/admin/seed-knowledge-base")
 async def seed_knowledge_base() -> dict:
-    try:
-        from app.db import postgres_client
-        count = postgres_client.seed_reference_docs()
-        return {"status": "seeded", "documents": count}
-    except Exception:
-        logger.exception("seed_knowledge_base_failed")
-        return {"status": "error", "documents": 0}
+    from app.db import pgvector
+    count = pgvector.seed_from_file(str(BASE_DIR / "data" / "seed" / "reference_docs.json"))
+    return {"status": "seeded", "documents": count}
 
 
 @app.get("/admin/metrics")
@@ -117,20 +103,7 @@ async def get_metrics() -> dict:
     except Exception:
         logger.exception("metrics_duckdb_failed")
 
-    pg_counts = {}
-    try:
-        from app.db import postgres_client
-        pg_counts = {
-            "reference_docs": postgres_client.get_table_count("reference_docs"),
-            "llm_decisions": postgres_client.get_table_count("llm_decisions"),
-            "agent_decisions": postgres_client.get_table_count("agent_decisions"),
-            "pipeline_runs": postgres_client.get_table_count("pipeline_runs"),
-        }
-    except Exception:
-        logger.warning("metrics_postgres_unavailable")
-
     return {
         **_metrics,
         "duckdb": duckdb_counts,
-        "postgres": pg_counts,
     }

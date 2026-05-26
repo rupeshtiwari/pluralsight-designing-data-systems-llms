@@ -152,7 +152,7 @@ def validate_enrichment_output(
     if required_fields is None:
         required_fields = VALIDATION_RULES["required_fields_feedback"]
     if known_doc_ids is None:
-        known_doc_ids = list(range(1, 100))
+        known_doc_ids = [f"DOC-{i:03d}" for i in range(1, 100)]
 
     checks: dict[str, Any] = {}
     errors: list[str] = []
