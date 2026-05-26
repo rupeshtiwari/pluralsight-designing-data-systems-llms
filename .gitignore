@@ -8,7 +8,7 @@ data/northwind.duckdb
 data/northwind.duckdb.wal
 logs/
 .run/
+tmp/
 .env
 *.log
 .DS_Store
-__pycache__/

@@ -25,7 +25,9 @@ NorthWind Markets operates a multi-vendor marketplace. The data team owns daily 
 ```
 repo-root/
   README.md                    # This file
-  setup-macos.sh               # One-click Mac setup
+  setup.sh                     # Cross-platform setup (macOS/Linux)
+  setup.ps1                    # Cross-platform setup (Windows PowerShell)
+  setup-macos.sh               # Legacy Mac-only setup (Homebrew-based)
   docker-compose.yml           # Full Docker environment
   Dockerfile                   # FastAPI service image
   requirements.txt             # Python dependencies
@@ -52,6 +54,7 @@ repo-root/
     validators/
       output_validator.py      # Schema, grounding, confidence, category, integrity checks
   scripts/
+    check-requirements.py      # Post-setup validation (all platforms)
     fmt.py                     # Pluralsight-branded color formatter for demo output
     demo_module1.py            # Automated demo runner for module 1
     demo_module2.py            # Automated demo runner for module 2
@@ -98,31 +101,46 @@ repo-root/
 
 ## Quick start
 
-### Option A: Local development (modules 1-2)
+### Prerequisites
 
+- Python 3.12+
+- Docker Desktop (or Docker Engine + Docker Compose)
+- DuckDB CLI
+
+### One-time setup
+
+Run the setup script for your platform. It installs dependencies, creates the virtual environment, sets up `.env`, and validates everything.
+
+**macOS or Linux:**
 ```bash
-# One-time setup
-./setup-macos.sh
+./setup.sh
+```
 
-# Start module 1 demo environment
+**Windows PowerShell:**
+```powershell
+.\setup.ps1
+```
+
+**Validate setup anytime:**
+```bash
+python scripts/check-requirements.py
+```
+
+### Run demo environments
+
+**Modules 1-2 (local FastAPI server):**
+```bash
+source .venv/bin/activate
 module1/scripts/demo_up.sh
-
-# Attach to tmux session
 tmux attach -t m1-demo
 ```
 
-### Option B: Full Docker environment (modules 3-4)
-
+**Modules 3-4 (full Docker stack with Airflow):**
 ```bash
-# Start all services
 docker compose up -d
-
-# Wait for health checks
 curl -s http://localhost:8000/health | python3 -m json.tool
-curl -s http://localhost:8080/health
-
-# Start module 3 demo environment
 module3/scripts/demo_up.sh
+tmux attach -t m3-demo
 ```
 
 ## Recording workflow
