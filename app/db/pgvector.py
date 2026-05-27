@@ -103,7 +103,7 @@ async def retrieve_similar_docs(
     """
     pool = _REFERENCE_DOCS
     if doc_type:
-        pool = [d for d in pool if d["doc_type"] == doc_type]
+        pool = [d for d in pool if doc_type in d["doc_type"] or d["doc_type"] in doc_type]
     results = pool[:top_k]
     log.info(
         "pgvector.retrieve_similar_docs",
