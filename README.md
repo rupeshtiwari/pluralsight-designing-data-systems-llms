@@ -28,6 +28,8 @@ repo-root/
   setup.sh                     # Cross-platform setup (macOS/Linux)
   setup.ps1                    # Cross-platform setup (Windows PowerShell)
   setup-macos.sh               # Legacy Mac-only setup (Homebrew-based)
+  environment-setup/
+    install-macos-requirements.sh  # macOS full setup (installs all tools via Homebrew)
   docker-compose.yml           # Full Docker environment
   Dockerfile                   # FastAPI service image
   requirements.txt             # Python dependencies
@@ -113,7 +115,12 @@ repo-root/
 
 ### One-time setup
 
-**macOS or Linux:**
+**macOS (recommended — installs all requirements via Homebrew):**
+```bash
+./environment-setup/install-macos-requirements.sh
+```
+
+**macOS or Linux (if prerequisites are already installed):**
 ```bash
 ./setup.sh
 ```
