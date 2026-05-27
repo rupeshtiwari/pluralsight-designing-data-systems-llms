@@ -22,12 +22,15 @@ TMPD=$(mktemp -d)
 trap 'rm -rf "$TMPD"' EXIT
 
 # ── Colors ──────────────────────────────────────────────────────────────────
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-BLUE='\033[38;2;42;236;250m'
-BOLD='\033[1m'
+# Pluralsight 2025 brand colors
+PINK='\033[38;2;255;22;117m'     # Transform Pink — FAIL, errors
+GREEN='\033[38;2;207;255;110m'   # Lime Green — PASS, success
+LGREEN='\033[38;2;64;255;191m'   # Limited Green — values, data
+BLUE='\033[38;2;42;236;250m'     # Blue — labels, field names
+GRAY='\033[38;2;191;191;191m'    # Light Gray — secondary text
+WHITE='\033[1;37m'               # White bold — headings
 DIM='\033[2m'
+BOLD='\033[1m'
 NC='\033[0m'
 
 ERRORS=0
@@ -36,21 +39,21 @@ pass() {
   printf "  ${GREEN}✓ PASS${NC}  %s\n" "$1"
 }
 fail_check() {
-  printf "  ${RED}✗ FAIL${NC}  %s\n" "$1"
+  printf "  ${PINK}✗ FAIL${NC}  %s\n" "$1"
   ERRORS=$((ERRORS + 1))
 }
 detail() {
-  printf "           ${DIM}%s${NC}\n" "$1"
+  printf "           ${GRAY}%s${NC}\n" "$1"
 }
 fix() {
-  printf "    ${YELLOW}→ Fix:${NC} %s\n" "$1"
+  printf "    ${BLUE}→ Fix:${NC} %s\n" "$1"
 }
 step_header() {
   echo ""
-  printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
-  printf "${BOLD}  STEP %s: %s${NC}\n" "$1" "$2"
+  printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+  printf "${WHITE}  STEP %s: %s${NC}\n" "$1" "$2"
   printf "${BLUE}  Learning objective: %s${NC}\n" "$3"
-  printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+  printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 }
 show_command() {
   printf "\n  ${DIM}Command:${NC}\n"
@@ -100,7 +103,7 @@ if ! curl -sf "$API/health" >/dev/null 2>&1; then
   detail "The reset script will start a fresh server with seed data."
   echo "Server not running" >> "$LOG"
   echo ""
-  printf "${RED}${BOLD}Cannot continue without a running server. Exiting.${NC}\n\n"
+  printf "${PINK}Cannot continue without a running server. Exiting.${NC}\n\n"
   exit 1
 fi
 pass "Server is healthy"
@@ -407,20 +410,20 @@ printf "  ${BLUE}1d${NC}  Steps 3, 4  ${DIM}Decision traceability + trusted tabl
 # VERDICT
 # ═════════════════════════════════════════════════════════════════════════════
 echo ""
-printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 if [[ $ERRORS -eq 0 ]]; then
-  printf "${GREEN}${BOLD}  ✓ ALL CHECKS PASSED — Demo is ready${NC}\n"
+  printf "${GREEN}  ✓ ALL CHECKS PASSED — Demo is ready${NC}\n"
   log ""
   log "VERDICT: ALL CHECKS PASSED"
 else
-  printf "${RED}${BOLD}  ✗ $ERRORS CHECK(S) FAILED — Fix the issues above${NC}\n"
+  printf "${PINK}  ✗ $ERRORS CHECK(S) FAILED — Fix the issues above${NC}\n"
   echo ""
-  printf "  ${YELLOW}Quick fix:${NC} ./scripts/module1-demo-reset.sh\n"
-  printf "  ${YELLOW}Then rerun:${NC} module1/scripts/preflight_check.sh\n"
+  printf "  ${BLUE}Quick fix:${NC} ./scripts/module1-demo-reset.sh\n"
+  printf "  ${BLUE}Then rerun:${NC} module1/scripts/preflight_check.sh\n"
   log ""
   log "VERDICT: $ERRORS CHECK(S) FAILED"
 fi
-printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 echo ""
 printf "  ${DIM}Log saved to: module1/preflight_log.txt${NC}\n"
 echo ""

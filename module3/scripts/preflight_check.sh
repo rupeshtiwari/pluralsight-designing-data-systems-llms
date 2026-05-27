@@ -22,9 +22,13 @@ TMPD=$(mktemp -d)
 trap 'rm -rf "$TMPD"' EXIT
 
 # ── Colors ──────────────────────────────────────────────────────────────────
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
+# Pluralsight 2025 brand colors
+PINK='\033[38;2;255;22;117m'     # Transform Pink
+GREEN='\033[38;2;207;255;110m'   # Lime Green
+
+LGREEN='\033[38;2;64;255;191m'   # Limited Green
+GRAY='\033[38;2;191;191;191m'    # Light Gray
+WHITE='\033[1;37m'               # White bold
 BLUE='\033[38;2;42;236;250m'
 BOLD='\033[1m'
 DIM='\033[2m'
@@ -36,21 +40,21 @@ pass() {
   printf "  ${GREEN}✓ PASS${NC}  %s\n" "$1"
 }
 fail_check() {
-  printf "  ${RED}✗ FAIL${NC}  %s\n" "$1"
+  printf "  ${PINK}✗ FAIL${NC}  %s\n" "$1"
   ERRORS=$((ERRORS + 1))
 }
 detail() {
-  printf "           ${DIM}%s${NC}\n" "$1"
+  printf "           ${GRAY}%s${NC}\n" "$1"
 }
 fix() {
-  printf "    ${YELLOW}→ Fix:${NC} %s\n" "$1"
+  printf "    ${BLUE}→ Fix:${NC} %s\n" "$1"
 }
 step_header() {
   echo ""
-  printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
-  printf "${BOLD}  STEP %s: %s${NC}\n" "$1" "$2"
+  printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+  printf "${WHITE}  STEP %s: %s${NC}\n" "$1" "$2"
   printf "${BLUE}  Learning objective: %s${NC}\n" "$3"
-  printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+  printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 }
 show_command() {
   printf "\n  ${DIM}Command:${NC}\n"
@@ -101,7 +105,7 @@ if ! curl -sf "$API/health" >/dev/null 2>&1; then
   detail "The reset script will start a fresh server with seed data."
   echo "Server not running" >> "$LOG"
   echo ""
-  printf "${RED}${BOLD}Cannot continue without a running server. Exiting.${NC}\n\n"
+  printf "${PINK}${BOLD}Cannot continue without a running server. Exiting.${NC}\n\n"
   exit 1
 fi
 pass "Server is healthy"
@@ -389,9 +393,9 @@ log ""
 log "All 4 learning objectives (3a, 3b, 3c, 3d) are covered by the 4 demo steps."
 
 echo ""
-printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 printf "${BOLD}  LO COVERAGE${NC}\n"
-printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 echo ""
 printf "  ${BLUE}3a${NC}  Step 2      ${DIM}Dynamic branching vs. static linear DAG${NC}\n"
 printf "  ${BLUE}3b${NC}  Steps 1, 3  ${DIM}Pipeline trigger + per-item LLM results${NC}\n"
@@ -402,20 +406,20 @@ printf "  ${BLUE}3d${NC}  Step 4      ${DIM}Quarantine guardrails with rejection
 # VERDICT
 # ═════════════════════════════════════════════════════════════════════════════
 echo ""
-printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 if [[ $ERRORS -eq 0 ]]; then
   printf "${GREEN}${BOLD}  ✓ ALL CHECKS PASSED — Demo is ready${NC}\n"
   log ""
   log "VERDICT: ALL CHECKS PASSED"
 else
-  printf "${RED}${BOLD}  ✗ $ERRORS CHECK(S) FAILED — Fix the issues above${NC}\n"
+  printf "${PINK}${BOLD}  ✗ $ERRORS CHECK(S) FAILED — Fix the issues above${NC}\n"
   echo ""
-  printf "  ${YELLOW}Quick fix:${NC} ./scripts/module1-demo-reset.sh\n"
-  printf "  ${YELLOW}Then rerun:${NC} module3/scripts/preflight_check.sh\n"
+  printf "  ${BLUE}Quick fix:${NC} ./scripts/module1-demo-reset.sh\n"
+  printf "  ${BLUE}Then rerun:${NC} module3/scripts/preflight_check.sh\n"
   log ""
   log "VERDICT: $ERRORS CHECK(S) FAILED"
 fi
-printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 echo ""
 printf "  ${DIM}Log saved to: module3/preflight_log.txt${NC}\n"
 echo ""
