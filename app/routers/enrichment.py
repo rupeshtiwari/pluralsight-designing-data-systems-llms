@@ -14,7 +14,7 @@ from uuid import uuid4
 import structlog
 from fastapi import APIRouter
 
-from app.db import pgvector, postgres
+from app.db import duckdb_client, pgvector, postgres
 from app.models.schemas import (
     CatalogEnrichRequest,
     CatalogEnrichResponse,
@@ -93,6 +93,25 @@ async def enrich_feedback(req: FeedbackEnrichRequest) -> FeedbackEnrichResponse:
         }
     )
 
+    category = llm_output.get("category", "unknown")
+    summary = llm_output.get("summary", "")
+    confidence = llm_output.get("confidence", 0.0)
+    source_doc_ids = llm_output.get("source_doc_ids", [])
+
+    if validation_status == "accepted":
+        duckdb_client.insert_enriched_feedback({
+            "id": req.feedback_id,
+            "request_id": request_id,
+            "customer_id": req.customer_id,
+            "product_id": req.product_id,
+            "feedback_text": req.feedback_text,
+            "category": category,
+            "summary": summary,
+            "confidence": confidence,
+            "source_doc_ids": source_doc_ids,
+            "validation_status": validation_status,
+        })
+
     log.info(
         "enrich.feedback.done",
         request_id=request_id,
@@ -101,10 +120,10 @@ async def enrich_feedback(req: FeedbackEnrichRequest) -> FeedbackEnrichResponse:
 
     return FeedbackEnrichResponse(
         request_id=request_id,
-        category=llm_output.get("category", "unknown"),
-        summary=llm_output.get("summary", ""),
-        confidence=llm_output.get("confidence", 0.0),
-        source_doc_ids=llm_output.get("source_doc_ids", []),
+        category=category,
+        summary=summary,
+        confidence=confidence,
+        source_doc_ids=source_doc_ids,
         validation_status=validation_status,
     )
 

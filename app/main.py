@@ -90,6 +90,12 @@ async def seed_knowledge_base() -> dict:
     return {"status": "seeded", "documents": count}
 
 
+@app.get("/admin/llm-decisions")
+async def list_llm_decisions(limit: int = 10) -> list:
+    from app.db import postgres
+    return await postgres.get_llm_decisions(limit=limit)
+
+
 @app.get("/admin/metrics")
 async def get_metrics() -> dict:
     duckdb_counts = {}
