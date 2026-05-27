@@ -1,6 +1,7 @@
-# Module 2 — Clip 4: Demo: LangGraph agent triage with PostgreSQL and API tools
+# Module 2 — Clip 4: LangGraph agent triage with PostgreSQL and API tools
 
 ## Overview
+
 This demo runs a LangGraph workflow for a failed NorthWind finance data quality check. It shows the agent stepping through inspect_metadata, retrieve_runbook, classify_severity, and recommend_action nodes, then stopping at an approval gate. Every tool call is recorded in PostgreSQL and the final decision requires human review.
 
 ## Learning objectives covered
@@ -12,40 +13,43 @@ This demo runs a LangGraph workflow for a failed NorthWind finance data quality 
 
 ## What this demo proves
 
-| Proof point | Step |
-|-------------|------|
-| Mermaid state diagram shows the workflow graph with active node progression | Step 1 |
-| Agent state JSON shows incident_id, selected edge, evidence summary, and decision reason | Step 2 |
-| PostgreSQL agent_tool_calls table shows tool name, input hash, output status, and timestamp | Step 3 |
-| PostgreSQL agent_decisions table shows review_required instead of automatic production write | Step 4 |
+| Proof point | Step | LO |
+|-------------|------|----|
+| State diagram shows the workflow graph with node progression | Step 1 | 2a |
+| Agent state JSON shows incident_id, evidence summary, and decision reason | Step 2 | 2a, 2b |
+| agent_tool_calls table shows tool name, output status, and timestamp | Step 3 | 2b |
+| agent_decisions table shows review_required instead of automatic production write | Step 4 | 2a, 2b |
 
-## Pre-recording setup
-1. Run `module2/scripts/demo_up.sh` off-camera
-2. Verify server healthy: `curl -s http://localhost:8000/health`
-3. Verify PostgreSQL tables exist (agent_tool_calls, agent_decisions)
-4. Terminal zoom set for mobile readability
+## Prerequisites
+
+1. Server is running: `curl -s http://localhost:8000/health`
+2. Knowledge base is seeded
 
 ## Demo steps
 
 ### Step 1: Show the LangGraph state diagram (LO 2a)
+
 **Goal**: Visualize the agent workflow graph before executing it
 
 ```bash
-curl -s http://localhost:8000/agent/graph | python3 scripts/fmt.py --type raw
+curl -s http://localhost:8000/agent/graph | python3 -m json.tool
 ```
 
-**Expected output**: Mermaid-compatible state diagram text showing nodes: inspect_metadata, retrieve_runbook, classify_severity, recommend_action, approval_gate. Edges show conditional transitions.
+**Expected output**: State diagram showing nodes: inspect_metadata, retrieve_runbook, classify_severity, recommend_action, approval_gate with conditional transitions.
 
-**Narration note**: Walk through each node and explain the purpose. Highlight that every transition is explicit, not hidden.
+**What the learner should notice**: Every transition is explicit. The agent follows a defined graph, not open-ended reasoning.
 
 ### Step 2: Run the triage workflow for a data quality incident (LO 2a, 2b)
+
 **Goal**: Execute the full agent workflow and show structured state at each step
 
 ```bash
-curl -s http://localhost:8000/agent/triage -H "Content-Type: application/json" -d @data/payloads/anomaly_triage.json | python3 scripts/fmt.py --type triage
+curl -s http://localhost:8000/agent/triage \
+  -H "Content-Type: application/json" \
+  -d @data/payloads/anomaly_triage.json | python3 -m json.tool
 ```
 
-**Expected output**: Formatted agent response showing:
+**Expected output**:
 - incident_id: INC-3001
 - severity: high (40 percent deviation exceeds 10 percent threshold)
 - root_cause_hypothesis: source system returned fewer records despite healthy API status
@@ -53,56 +57,53 @@ curl -s http://localhost:8000/agent/triage -H "Content-Type: application/json" -
 - evidence_summary: references the data quality runbook DOC-005
 - review_required: true
 
-**Narration note**: Read the severity, the root cause hypothesis, and the recommended action. Explain that review_required=true means this does not auto-execute.
+**What the learner should notice**: The agent classified the severity based on deviation percentage, recommended a specific action, and set review_required=true — it does not auto-execute.
 
-### Step 3: Verify tool calls recorded in PostgreSQL (LO 2b)
+### Step 3: Verify tool calls in the agent state (LO 2b)
+
 **Goal**: Prove every tool invocation is traceable in the metadata store
 
 ```bash
-docker exec northwind-postgres psql -U northwind -c "SELECT tool_name, output_status, created_at FROM agent_tool_calls WHERE incident_id='INC-3001' ORDER BY created_at"
+curl -s http://localhost:8000/agent/state/INC-3001 | python3 -m json.tool
 ```
 
-**Expected output**: Table showing 4 tool calls in order:
-1. inspect_metadata - success
-2. retrieve_runbook - success
-3. classify_severity - success
-4. recommend_action - success
+**Expected output**: Agent state showing tool calls in order: inspect_metadata, retrieve_runbook, classify_severity, recommend_action, approval_gate — each with output data.
 
-**Narration note**: Point out the chronological order matches the state diagram. Every tool call has a status and timestamp.
+**What the learner should notice**: The chronological order matches the state diagram. Every tool call is recorded with its input and output.
 
-### Step 4: Verify the approval gate decision in PostgreSQL (LO 2a, 2b)
+### Step 4: Verify the approval gate decision (LO 2a, 2b)
+
 **Goal**: Prove the agent stopped at the approval gate instead of auto-executing
 
 ```bash
-docker exec northwind-postgres psql -U northwind -c "SELECT incident_id, severity, recommended_action, review_required FROM agent_decisions WHERE incident_id='INC-3001'"
+curl -s http://localhost:8000/agent/decisions | python3 -m json.tool
 ```
 
-**Expected output**: Single row showing incident_id=INC-3001, severity=high, recommended_action describing pipeline pause, review_required=true
+**Expected output**: Decision record showing incident_id=INC-3001, severity=high, recommended_action describing pipeline pause, review_required=true.
 
-**Narration note**: Emphasize that review_required=true is the approval gate. The agent recommends but does not act on production systems.
+**What the learner should notice**: review_required=true is the approval gate. The agent recommends but does not act on production systems.
 
-## Callout
-Approval gates protect trusted systems from autonomous agent actions
+## Key takeaway
 
-## Pre-recording validation
+Approval gates protect trusted systems from autonomous agent actions.
 
-Before recording, run the validation script to generate a plain-text log with the exact input and output for every step above:
+## Preflight check
 
 ```bash
-scripts/validate_module2.sh
+module2/scripts/preflight_check.sh
 ```
 
-This writes `logs/module2_validation.txt` with each command, full payload, raw JSON response, expected output, and a checklist. Paste the log into GPT with:
-
-> Review this validation log. For each VALIDATION CHECKLIST, mark items PASS or FAIL based on the ACTUAL OUTPUT. Give a GO / NO-GO verdict.
-
-Do not record until all checklist items pass.
+Runs every demo step, captures output, and saves the log to `module2/preflight_log.txt` with LO coverage mapping.
 
 ## Cleanup
-Run `module2/scripts/demo_down.sh` after recording
+
+```bash
+./scripts/module1-demo-reset.sh
+```
 
 ## Key files
-- `app/routers/agent.py` - Agent triage endpoint
-- `app/services/llm_stub.py` - Deterministic LLM responses
-- `app/db/postgres_client.py` - PostgreSQL tool call and decision storage
-- `data/payloads/anomaly_triage.json` - Demo payload
+
+- `app/routers/agent.py` — Agent triage endpoint
+- `app/services/llm.py` — Deterministic LLM responses
+- `app/db/postgres.py` — In-memory tool call and decision storage
+- `data/payloads/anomaly_triage.json` — Demo payload

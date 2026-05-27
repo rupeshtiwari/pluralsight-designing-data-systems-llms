@@ -1,6 +1,7 @@
-# Module 1 — Clip 4: Demo: Enriching e-commerce feedback with FastAPI, DuckDB, and pgvector
+# Module 1 — Clip 4: Enriching e-commerce feedback with FastAPI, DuckDB, and pgvector
 
 ## Overview
+
 This demo runs the NorthWind feedback enrichment flow from DuckDB source records through FastAPI LLM enrichment to the trusted output table. It proves that LLM outputs enter trusted tables only after schema, grounding, confidence, and source ID validation passes.
 
 ## Learning objectives covered
@@ -13,98 +14,107 @@ This demo runs the NorthWind feedback enrichment flow from DuckDB source records
 
 ## What this demo proves
 
-| Proof point | Step |
-|-------------|------|
-| DuckDB raw.feedback has input records ready for enrichment | Step 1 |
-| FastAPI returns structured enrichment with request_id, category, summary, confidence, and source_doc_ids | Step 2 |
-| PostgreSQL llm_decisions table records the validation outcome | Step 3 |
-| DuckDB trusted.feedback_enriched row count increases after validated enrichment | Step 4 |
+| Proof point | Step | LO |
+|-------------|------|----|
+| DuckDB raw.feedback has input records ready for enrichment | Step 1 | 1a |
+| FastAPI returns structured enrichment with request_id, category, summary, confidence, and source_doc_ids | Step 2 | 1a, 1b |
+| llm_decisions table records the same request_id and validation status | Step 3 | 1b, 1d |
+| DuckDB trusted.feedback_enriched row count increases after validated enrichment | Step 4 | 1d |
 
-## Pre-recording setup
-1. Run `module1/scripts/demo_up.sh` off-camera
-2. Verify server is healthy: `curl -s http://localhost:8000/health | python3 -m json.tool`
-3. Verify DuckDB has seed data loaded
-4. Verify PostgreSQL has reference docs seeded
-5. Terminal zoom set for mobile readability
+## Prerequisites
+
+1. Server is running: `curl -s http://localhost:8000/health | python3 -m json.tool`
+2. DuckDB has seed data loaded (10 feedback records)
+3. Knowledge base is seeded (8 reference documents)
+
+To start from a clean state:
+```bash
+./scripts/module1-demo-reset.sh
+```
 
 ## Demo steps
 
 ### Step 1: Show DuckDB raw feedback input (LO 1a)
+
 **Goal**: Prove source data exists in the deterministic pipeline layer before any LLM processing
 
 ```bash
-duckdb data/northwind.duckdb "SELECT count(*) as row_count FROM raw.feedback"
+curl -s http://localhost:8000/admin/metrics | python3 -m json.tool
 ```
 
-**Expected output**: Row count showing the batch of feedback records ready for enrichment (10 rows from seed data)
+**Expected output**: `raw_feedback: 10`, `trusted_enriched: 0`
 
-**Narration note**: Reference the row count value on screen
+**What the learner should notice**: 10 feedback records are in the raw table. The trusted enrichment table is empty — no LLM has touched this data yet.
 
 ### Step 2: Enrich a single feedback record through FastAPI (LO 1a, 1b)
+
 **Goal**: Show the LLM enrichment boundary — deterministic input goes in, structured validated output comes back
 
 ```bash
-curl -s http://localhost:8000/enrich/feedback -H "Content-Type: application/json" -d @data/payloads/feedback_enrich.json | python3 scripts/fmt.py --type feedback
+curl -s http://localhost:8000/enrich/feedback \
+  -H "Content-Type: application/json" \
+  -d @data/payloads/feedback_enrich.json | python3 -m json.tool
 ```
 
-**Expected output**: Formatted response showing:
-- request_id (UUID)
+**Expected output**:
+- request_id: a UUID
 - category: product_quality
-- summary: one-sentence summary of the defective blender feedback
-- confidence: value above 0.75 threshold
-- source_doc_ids: ["DOC-001", "DOC-007"] (product quality and feedback classification docs)
+- summary: describes the defective blender (cracked lid, grinding noise)
+- confidence: 0.8 (above the 0.75 threshold)
+- source_doc_ids: ["DOC-001", "DOC-002"]
 - validation_status: accepted
 
-**Narration note**: Read the category, confidence value, and source doc IDs from screen. Explain that the JSON contract from Clip 2 is what we see emitted here.
+**What the learner should notice**: The service classified the feedback, grounded its answer in reference documents, and the validation status is accepted because all checks passed.
 
-### Step 3: Verify the decision was recorded in PostgreSQL (LO 1b, 1d)
+### Step 3: Verify the decision was stored in llm_decisions (LO 1b, 1d)
+
 **Goal**: Prove the LLM decision entered the metadata store with full traceability
 
 ```bash
-curl -s http://localhost:8000/agent/decisions | python3 scripts/fmt.py --type audit
+curl -s http://localhost:8000/admin/llm-decisions?limit=1 | python3 -m json.tool
 ```
 
-Or use direct psql if preferred:
-```bash
-docker exec northwind-postgres psql -U northwind -c "SELECT request_id, endpoint, category, confidence, validation_status, decision FROM llm_decisions ORDER BY created_at DESC LIMIT 3"
-```
+**Expected output**: A decision record showing the same request_id from Step 2, endpoint=feedback, status=accepted, and token counts (prompt=18, completion=46, total=64)
 
-**Expected output**: Table showing the request_id from Step 2, endpoint=/enrich/feedback, validation_status=accepted
-
-**Narration note**: Point out the request_id matches Step 2, proving traceability from enrichment call to decision record
+**What the learner should notice**: The request_id matches Step 2, proving end-to-end traceability from enrichment call to decision record. Every LLM call creates a traceable record.
 
 ### Step 4: Verify trusted output table received the enriched record (LO 1d)
+
 **Goal**: Prove that validated LLM output reached the trusted analytical table
 
 ```bash
-duckdb data/northwind.duckdb "SELECT count(*) as row_count FROM trusted.feedback_enriched"
+curl -s http://localhost:8000/admin/metrics | python3 -m json.tool
 ```
 
-Then show the enriched record:
-```bash
-duckdb data/northwind.duckdb "SELECT request_id, category, confidence, validation_status FROM trusted.feedback_enriched ORDER BY enriched_at DESC LIMIT 3"
-```
+**Expected output**: `raw_feedback: 10`, `trusted_enriched: 1`
 
-**Expected output**: Row count delta showing new records in trusted table, plus the enriched record details matching Step 2
+**What the learner should notice**: The trusted table grew from 0 to 1. The validated LLM output was promoted from a proposal to a trusted data product. If validation had failed, the record would have gone to quarantine instead.
 
-**Narration note**: Reference the row count increase and the matching request_id
+## Key takeaway
 
-## Callout
-LLM outputs are proposals until validation promotes them to trusted data
+LLM outputs are proposals until validation promotes them to trusted data.
 
-## Pre-recording validation
+## Preflight check
 
-Before recording, run the validation script to generate a plain-text log with the exact input and output for every step above:
+Before running the demo, execute the preflight script to verify all steps produce correct output:
 
 ```bash
-scripts/validate_module1.sh
+module1/scripts/preflight_check.sh
 ```
 
-This writes `logs/module1_validation.txt` with each command, full payload, raw JSON response, expected output, and a checklist. Paste the log into GPT with:
-
-> Review this validation log. For each VALIDATION CHECKLIST, mark items PASS or FAIL based on the ACTUAL OUTPUT. Give a GO / NO-GO verdict.
-
-Do not record until all checklist items pass.
+This runs every demo step, captures commands and output, maps each step to its learning objective, and saves the log to `module1/preflight_log.txt`. Use this log to verify that demo steps align with the learning objectives.
 
 ## Cleanup
-Run `module1/scripts/demo_down.sh` after recording
+
+```bash
+./scripts/module1-demo-reset.sh
+```
+
+## Key files
+
+- `app/routers/enrichment.py` — Feedback enrichment endpoint
+- `app/services/llm.py` — Deterministic LLM stub
+- `app/validators/output_validator.py` — Validation logic
+- `app/db/pgvector.py` — Reference document retrieval
+- `data/payloads/feedback_enrich.json` — Demo payload
+- `data/seed/feedback.json` — Seed data (10 records)
