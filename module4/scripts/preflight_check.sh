@@ -1,151 +1,500 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# ─────────────────────────────────────────────────────────────────────────────
+# Module 4 Clip 4 — Preflight Check
+#
+# Runs every demo step in the same sequence as the README, captures each
+# command and its output, and saves a structured log to module4/preflight_log.txt.
+#
+# Use the log to verify that demo steps align with the learning objectives.
+#
+# Usage:
+#   module4/scripts/preflight_check.sh
+# ─────────────────────────────────────────────────────────────────────────────
 
-# ── Colors ────────────────────────────────────────────────────────────────────
-RED='\033[0;31m'
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$PROJECT_ROOT"
+
+LOG="$PROJECT_ROOT/module4/preflight_log.txt"
+API="http://localhost:8000"
+TMPD=$(mktemp -d)
+trap 'rm -rf "$TMPD"' EXIT
+
+# ── Colors ──────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
+RED='\033[0;31m'
 YELLOW='\033[1;33m'
+BLUE='\033[38;2;42;236;250m'
 BOLD='\033[1m'
+DIM='\033[2m'
 NC='\033[0m'
 
-PASS=0
-FAIL=0
+ERRORS=0
 
-pass() { printf "${GREEN}[PASS]${NC} %s\n" "$1"; PASS=$((PASS + 1)); }
-fail() { printf "${RED}[FAIL]${NC} %s\n" "$1"; FAIL=$((FAIL + 1)); }
-info() { printf "${YELLOW}[INFO]${NC} %s\n" "$1"; }
+pass() {
+  printf "  ${GREEN}✓ PASS${NC}  %s\n" "$1"
+}
+fail_check() {
+  printf "  ${RED}✗ FAIL${NC}  %s\n" "$1"
+  ERRORS=$((ERRORS + 1))
+}
+detail() {
+  printf "           ${DIM}%s${NC}\n" "$1"
+}
+fix() {
+  printf "    ${YELLOW}→ Fix:${NC} %s\n" "$1"
+}
+step_header() {
+  echo ""
+  printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+  printf "${BOLD}  STEP %s: %s${NC}\n" "$1" "$2"
+  printf "${BLUE}  Learning objective: %s${NC}\n" "$3"
+  printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+}
+show_command() {
+  printf "\n  ${DIM}Command:${NC}\n"
+  printf "  ${DIM}\$${NC} %s\n\n" "$1"
+}
 
+# ── Log helpers ─────────────────────────────────────────────────────────────
+log() { echo "$1" >> "$LOG"; }
+log_divider() {
+  log ""
+  log "================================================================================"
+  log "$1"
+  log "================================================================================"
+  log ""
+}
+
+# ── Start log ───────────────────────────────────────────────────────────────
+cat > "$LOG" <<HEADER
+================================================================================
+MODULE 4 — CLIP 4 PREFLIGHT LOG
+================================================================================
+Demo:    Rejecting hallucinated and schema-drifted LLM outputs in Airflow
+Date:    $(date -u '+%Y-%m-%dT%H:%M:%SZ')
+Server:  $API
+
+Learning objectives:
+  1d  Demonstrate designing data flows that incorporate LLM outputs
+  3c  Trigger and monitor pipeline tasks that automate operations
+  3d  Apply guardrails and validation so learners can ensure safe and reliable system behavior
+
+HEADER
+
+# ── Header ──────────────────────────────────────────────────────────────────
 echo ""
-printf "${BOLD}Module 4 — Pre-recording Preflight Check${NC}\n"
-echo "=========================================="
+printf "${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}\n"
+printf "${BOLD}║  Module 4 Clip 4 — Preflight Check                        ║${NC}\n"
+printf "${BOLD}║  Rejecting hallucinated and schema-drifted LLM outputs    ║${NC}\n"
+printf "${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
+
+# ── Server check ────────────────────────────────────────────────────────────
 echo ""
+printf "  ${DIM}Checking server at ${API}...${NC}\n"
 
-# ── 1. FastAPI server is running ─────────────────────────────────────────────
-info "Checking FastAPI server..."
-if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-    HEALTH_RESPONSE=$(curl -sf http://localhost:8000/health)
-    pass "FastAPI server is healthy: $HEALTH_RESPONSE"
-else
-    fail "FastAPI server is not reachable at http://localhost:8000/health"
+if ! curl -sf "$API/health" >/dev/null 2>&1; then
+  fail_check "Server is not running at $API"
+  fix "./scripts/module1-demo-reset.sh"
+  detail "The reset script will start a fresh server with seed data."
+  echo "Server not running" >> "$LOG"
+  echo ""
+  printf "${RED}${BOLD}Cannot continue without a running server. Exiting.${NC}\n\n"
+  exit 1
 fi
+pass "Server is healthy"
+log "Server: healthy"
 
-# ── 2. Validation endpoint is reachable ──────────────────────────────────────
-info "Checking validation endpoint..."
-if curl -sf -X POST http://localhost:8000/validate/output \
-    -H "Content-Type: application/json" \
-    -d '{"category": "product_quality", "summary": "test", "confidence": 0.9, "source_doc_ids": ["DOC-001"]}' > /dev/null 2>&1; then
-    pass "Validation endpoint is reachable"
-else
-    fail "Validation endpoint is not reachable at http://localhost:8000/validate/output"
-fi
+# Seed knowledge base silently
+curl -sf -X POST "$API/admin/seed-knowledge-base" >/dev/null 2>&1
+log "Knowledge base: seeded"
 
-# ── 3. Batch enrichment endpoint is reachable ────────────────────────────────
-info "Checking batch enrichment endpoint..."
-if curl -sf http://localhost:8000/pipeline/batch-enrich -X OPTIONS > /dev/null 2>&1 || \
-   curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-    pass "Pipeline batch-enrich endpoint assumed reachable (server is healthy)"
-else
-    fail "Pipeline batch-enrich endpoint may not be reachable"
-fi
+# ═════════════════════════════════════════════════════════════════════════════
+# STEP 1 (LO 3c, 3d)
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "1/4" "Run the validation batch through the pipeline" "3c, 3d — Batch processing with validation routing"
 
-# ── 4. PostgreSQL has pipeline_runs table ────────────────────────────────────
-info "Checking PostgreSQL pipeline_runs table..."
-if command -v docker &>/dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "northwind-postgres"; then
-    TABLE_EXISTS=$(docker exec northwind-postgres psql -U northwind -t -c "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'pipeline_runs')" 2>/dev/null | tr -d '[:space:]')
-    if [ "$TABLE_EXISTS" = "t" ]; then
-        pass "PostgreSQL pipeline_runs table exists"
-    else
-        fail "PostgreSQL pipeline_runs table does not exist"
-    fi
-else
-    if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-        info "PostgreSQL container not directly accessible; server is running so tables should exist"
-        pass "PostgreSQL check skipped (no Docker container), server is running"
-    else
-        fail "Cannot check PostgreSQL pipeline_runs (no Docker container or API)"
-    fi
-fi
+BATCH_CMD="curl -s -X POST $API/pipeline/batch-enrich -H \"Content-Type: application/json\" -d '{\"items\": $(cat data/payloads/batch_feedback.json)}'"
+show_command "$BATCH_CMD"
 
-# ── 5. DuckDB has trusted and quarantine schemas ────────────────────────────
-info "Checking DuckDB schemas..."
-if command -v duckdb &>/dev/null; then
-    TRUSTED_EXISTS=$(duckdb "$REPO_ROOT/data/northwind.duckdb" "SELECT count(*) FROM information_schema.schemata WHERE schema_name = 'trusted'" 2>/dev/null | tail -1 | tr -d '[:space:]')
-    QUARANTINE_EXISTS=$(duckdb "$REPO_ROOT/data/northwind.duckdb" "SELECT count(*) FROM information_schema.schemata WHERE schema_name = 'quarantine'" 2>/dev/null | tail -1 | tr -d '[:space:]')
-    if [ "$TRUSTED_EXISTS" = "1" ]; then
-        pass "DuckDB trusted schema exists"
-    else
-        fail "DuckDB trusted schema is missing"
-    fi
-    if [ "$QUARANTINE_EXISTS" = "1" ]; then
-        pass "DuckDB quarantine schema exists"
-    else
-        fail "DuckDB quarantine schema is missing"
-    fi
-else
-    if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-        info "duckdb CLI not found; server is running so schemas should be loaded"
-        pass "DuckDB check skipped (no CLI), server is running"
-    else
-        fail "duckdb CLI not found and server is not running"
-    fi
-fi
+log_divider "STEP 1: Run the validation batch through the pipeline (LO 3c, 3d)"
+log "COMMAND:"
+log "  $BATCH_CMD"
+log ""
+log "INPUT PAYLOAD (data/payloads/batch_feedback.json):"
+cat "$PROJECT_ROOT/data/payloads/batch_feedback.json" >> "$LOG"
+log ""
 
-# ── 6. Payload file exists ──────────────────────────────────────────────────
-info "Checking payload files..."
-PAYLOADS_DIR="$REPO_ROOT/data/payloads"
-REQUIRED_PAYLOADS=("batch_validation_test.json")
+BATCH_PAYLOAD=$(python3 -c "
+import json
+items = json.load(open('$PROJECT_ROOT/data/payloads/batch_feedback.json'))
+print(json.dumps({'items': items}))
+")
 
-for payload in "${REQUIRED_PAYLOADS[@]}"; do
-    if [ -f "$PAYLOADS_DIR/$payload" ]; then
-        # Verify payload has expected structure (4 items)
-        ITEM_COUNT=$(python3 -c "import json; data=json.load(open('$PAYLOADS_DIR/$payload')); print(len(data))" 2>/dev/null || echo "0")
-        if [ "$ITEM_COUNT" -ge 4 ] 2>/dev/null; then
-            pass "Payload data/payloads/$payload has $ITEM_COUNT items"
-        else
-            fail "Payload data/payloads/$payload exists but has unexpected item count: $ITEM_COUNT (expected >= 4)"
-        fi
-    else
-        fail "Payload missing: data/payloads/$payload"
-    fi
-done
+BATCH_RESPONSE=$(curl -sf -X POST "$API/pipeline/batch-enrich" \
+  -H "Content-Type: application/json" \
+  -d "$BATCH_PAYLOAD")
+echo "$BATCH_RESPONSE" | python3 -m json.tool > "$TMPD/step1.json" 2>&1
 
-# ── 7. fmt.py script exists ─────────────────────────────────────────────────
-info "Checking fmt.py formatter..."
-if [ -f "$REPO_ROOT/scripts/fmt.py" ]; then
-    pass "scripts/fmt.py exists"
-else
-    fail "scripts/fmt.py is missing"
-fi
+log "OUTPUT:"
+cat "$TMPD/step1.json" >> "$LOG"
+log ""
 
-# ── 8. Key application files exist ──────────────────────────────────────────
-info "Checking key application files..."
-KEY_FILES=(
-    "app/validators/output_validator.py"
-    "app/routers/validation.py"
-    "app/routers/pipeline.py"
-)
+BATCH_ID=$(echo "$BATCH_RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['batch_id'])")
+TOTAL=$(echo "$BATCH_RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['total'])")
+ACCEPTED=$(echo "$BATCH_RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['accepted'])")
+REJECTED=$(echo "$BATCH_RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['rejected'])")
+QUARANTINED=$(echo "$BATCH_RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['quarantined'])")
 
-for keyfile in "${KEY_FILES[@]}"; do
-    if [ -f "$REPO_ROOT/$keyfile" ]; then
-        pass "Key file exists: $keyfile"
-    else
-        fail "Key file missing: $keyfile"
-    fi
-done
-
-# ── Summary ──────────────────────────────────────────────────────────────────
-echo ""
-echo "=========================================="
-TOTAL=$((PASS + FAIL))
-printf "${BOLD}Results: ${GREEN}%d passed${NC}, ${RED}%d failed${NC} out of %d checks${NC}\n" "$PASS" "$FAIL" "$TOTAL"
+printf "  ${BLUE}batch_id:${NC}     %s\n" "$BATCH_ID"
+printf "  ${BLUE}total:${NC}        %s\n" "$TOTAL"
+printf "  ${BLUE}accepted:${NC}     %s\n" "$ACCEPTED"
+printf "  ${BLUE}rejected:${NC}     %s\n" "$REJECTED"
+printf "  ${BLUE}quarantined:${NC}  %s\n" "$QUARANTINED"
 echo ""
 
-if [ "$FAIL" -eq 0 ]; then
-    printf "${GREEN}${BOLD}All preflight checks passed — ready to record!${NC}\n"
-    exit 0
+log "EXTRACTED VALUES:"
+log "  batch_id:     $BATCH_ID"
+log "  total:        $TOTAL"
+log "  accepted:     $ACCEPTED"
+log "  rejected:     $REJECTED"
+log "  quarantined:  $QUARANTINED"
+log ""
+log "LO COVERAGE:"
+log "  3c — Batch pipeline executed: total=$TOTAL, accepted=$ACCEPTED, rejected=$REJECTED"
+log "  3d — Validation routing: rejected items quarantined, accepted items promoted"
+
+# Check: total = 5
+if [[ "$TOTAL" -eq 5 ]]; then
+  pass "total = $TOTAL (all 5 batch items processed)"
+  log "RESULT: PASS — total = $TOTAL"
 else
-    printf "${RED}${BOLD}Fix the %d failing check(s) before recording.${NC}\n" "$FAIL"
-    exit 1
+  fail_check "total = $TOTAL (expected 5)"
+  fix "Verify data/payloads/batch_feedback.json has 5 items"
+  detail "The batch payload should contain exactly 5 feedback records."
+  log "RESULT: FAIL — total = $TOTAL (expected 5)"
 fi
+
+# Check: accepted >= 2
+if [[ "$ACCEPTED" -ge 2 ]]; then
+  pass "accepted = $ACCEPTED (at least 2 items passed validation)"
+  log "RESULT: PASS — accepted = $ACCEPTED"
+else
+  fail_check "accepted = $ACCEPTED (expected >= 2)"
+  fix "curl -sf -X POST $API/admin/seed-knowledge-base"
+  detail "The knowledge base may not be seeded. Without reference docs,"
+  detail "grounding checks will fail and reduce accepted count."
+  log "RESULT: FAIL — accepted = $ACCEPTED (expected >= 2)"
+fi
+
+# Check: rejected >= 1
+if [[ "$REJECTED" -ge 1 ]]; then
+  pass "rejected = $REJECTED (at least 1 item caught by validation)"
+  detail "Validation correctly rejected items with bad data."
+  log "RESULT: PASS — rejected = $REJECTED"
+else
+  fail_check "rejected = $REJECTED (expected >= 1)"
+  fix "Check app/validators/output_validator.py validation rules"
+  detail "At least one batch item should fail validation (e.g., low confidence,"
+  detail "hallucinated category, or missing source docs)."
+  log "RESULT: FAIL — rejected = $REJECTED (expected >= 1)"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+# STEP 2 (LO 3d)
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "2/4" "Examine individual validation failures" "3d — Guardrails catch hallucinated categories"
+
+VALIDATE_CMD='curl -s -X POST http://localhost:8000/validate/output -H "Content-Type: application/json" -d '"'"'{"output": {"category": "electronics_repair", "summary": "Customer needs repair", "confidence": 0.92, "source_doc_ids": ["DOC-001"]}}'"'"''
+show_command "$VALIDATE_CMD"
+
+log_divider "STEP 2: Examine individual validation failures (LO 3d)"
+log "COMMAND:"
+log "  $VALIDATE_CMD"
+log ""
+log "INPUT PAYLOAD:"
+log '  {"output": {"category": "electronics_repair", "summary": "Customer needs repair", "confidence": 0.92, "source_doc_ids": ["DOC-001"]}}'
+log ""
+
+VALIDATE_RESPONSE=$(curl -sf -X POST "$API/validate/output" \
+  -H "Content-Type: application/json" \
+  -d '{"output": {"category": "electronics_repair", "summary": "Customer needs repair", "confidence": 0.92, "source_doc_ids": ["DOC-001"]}}')
+echo "$VALIDATE_RESPONSE" | python3 -m json.tool > "$TMPD/step2.json" 2>&1
+
+log "OUTPUT:"
+cat "$TMPD/step2.json" >> "$LOG"
+log ""
+
+IS_VALID=$(echo "$VALIDATE_RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['is_valid'])")
+CHECKS=$(echo "$VALIDATE_RESPONSE" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for c in data.get('checks', []):
+    print(f\"{c['check']}: {c['result']}\")
+")
+VAL_ERRORS=$(echo "$VALIDATE_RESPONSE" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+errs = data.get('errors', [])
+print('; '.join(errs) if errs else 'none')
+")
+CATEGORY_CHECK=$(echo "$VALIDATE_RESPONSE" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for c in data.get('checks', []):
+    if 'category' in c.get('check', '').lower():
+        print(c['result'])
+        break
+else:
+    print('NOT_FOUND')
+")
+
+printf "  ${BLUE}is_valid:${NC}  %s\n" "$IS_VALID"
+printf "  ${BLUE}checks:${NC}\n"
+while IFS= read -r line; do
+  printf "    ${DIM}%s${NC}\n" "$line"
+done <<< "$CHECKS"
+printf "  ${BLUE}errors:${NC}    %s\n" "$VAL_ERRORS"
+echo ""
+
+log "EXTRACTED VALUES:"
+log "  is_valid: $IS_VALID"
+log "  checks:"
+while IFS= read -r line; do
+  log "    $line"
+done <<< "$CHECKS"
+log "  errors: $VAL_ERRORS"
+log ""
+log "LO COVERAGE:"
+log "  3d — Guardrails rejected hallucinated category 'electronics_repair'"
+
+# Check: is_valid = False
+if [[ "$IS_VALID" == "False" || "$IS_VALID" == "false" ]]; then
+  pass "is_valid = $IS_VALID (hallucinated category correctly rejected)"
+  log "RESULT: PASS — is_valid = $IS_VALID"
+else
+  fail_check "is_valid = $IS_VALID (expected false)"
+  fix "Check VALIDATION_RULES['allowed_categories'] in app/validators/output_validator.py"
+  detail "The category 'electronics_repair' should not be in the allowed list."
+  detail "The validator should reject it and return is_valid=false."
+  log "RESULT: FAIL — is_valid = $IS_VALID (expected false)"
+fi
+
+# Check: category check = FAIL
+if [[ "$CATEGORY_CHECK" == "FAIL" ]]; then
+  pass "category check = FAIL (electronics_repair not in allowed list)"
+  detail "One FAIL is enough to reject. The system validates structure,"
+  detail "grounding, confidence, and category independently."
+  log "RESULT: PASS — category check = FAIL"
+else
+  fail_check "category check = $CATEGORY_CHECK (expected FAIL)"
+  fix "Verify allowed_categories in app/validators/output_validator.py"
+  detail "The category validation check should return FAIL for any category"
+  detail "not in the allowed list."
+  log "RESULT: FAIL — category check = $CATEGORY_CHECK (expected FAIL)"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+# STEP 3 (LO 3c)
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "3/4" "Verify pipeline run summary" "3c — Operational monitoring of batch runs"
+show_command "curl -s $API/pipeline/runs | python3 -m json.tool"
+
+log_divider "STEP 3: Verify pipeline run summary (LO 3c)"
+log "COMMAND:"
+log "  curl -s $API/pipeline/runs | python3 -m json.tool"
+log ""
+
+RUNS_RESPONSE=$(curl -sf "$API/pipeline/runs")
+echo "$RUNS_RESPONSE" | python3 -m json.tool > "$TMPD/step3.json" 2>&1
+
+log "OUTPUT:"
+cat "$TMPD/step3.json" >> "$LOG"
+log ""
+
+RUN_COUNT=$(echo "$RUNS_RESPONSE" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
+RUN_ACCEPTED=$(echo "$RUNS_RESPONSE" | python3 -c "
+import json, sys
+runs = json.load(sys.stdin)
+for r in runs:
+    if r.get('accepted', 0) > 0 or r.get('rejected', 0) > 0:
+        print(r.get('accepted', 0))
+        break
+else:
+    print(0)
+")
+RUN_REJECTED=$(echo "$RUNS_RESPONSE" | python3 -c "
+import json, sys
+runs = json.load(sys.stdin)
+for r in runs:
+    if r.get('accepted', 0) > 0 or r.get('rejected', 0) > 0:
+        print(r.get('rejected', 0))
+        break
+else:
+    print(0)
+")
+RUN_STATUS=$(echo "$RUNS_RESPONSE" | python3 -c "
+import json, sys
+runs = json.load(sys.stdin)
+for r in runs:
+    if r.get('accepted', 0) > 0 or r.get('rejected', 0) > 0:
+        print(r.get('status', 'unknown'))
+        break
+else:
+    print('no qualifying run')
+")
+
+printf "  ${BLUE}pipeline runs found:${NC}  %s\n" "$RUN_COUNT"
+printf "  ${BLUE}latest run status:${NC}    %s\n" "$RUN_STATUS"
+printf "  ${BLUE}accepted_count:${NC}       %s\n" "$RUN_ACCEPTED"
+printf "  ${BLUE}rejected_count:${NC}       %s\n" "$RUN_REJECTED"
+echo ""
+
+log "EXTRACTED VALUES:"
+log "  pipeline_runs_found: $RUN_COUNT"
+log "  latest_run_status:   $RUN_STATUS"
+log "  accepted_count:      $RUN_ACCEPTED"
+log "  rejected_count:      $RUN_REJECTED"
+log ""
+log "LO COVERAGE:"
+log "  3c — Pipeline monitoring shows accepted=$RUN_ACCEPTED, rejected=$RUN_REJECTED per run"
+
+# Check: at least one run exists
+if [[ "$RUN_COUNT" -ge 1 ]]; then
+  pass "pipeline/runs returned $RUN_COUNT run(s)"
+  log "RESULT: PASS — $RUN_COUNT run(s) found"
+else
+  fail_check "pipeline/runs returned 0 runs (expected >= 1)"
+  fix "Re-run Step 1 to create a pipeline run record"
+  detail "The batch-enrich call in Step 1 should have created a pipeline run."
+  log "RESULT: FAIL — no runs found"
+fi
+
+# Check: run has accepted count
+if [[ "$RUN_ACCEPTED" -ge 1 ]]; then
+  pass "run has accepted_count = $RUN_ACCEPTED"
+  log "RESULT: PASS — accepted_count = $RUN_ACCEPTED"
+else
+  fail_check "run has accepted_count = $RUN_ACCEPTED (expected >= 1)"
+  fix "./scripts/module1-demo-reset.sh && module4/scripts/preflight_check.sh"
+  detail "The batch run should have at least one accepted item."
+  log "RESULT: FAIL — accepted_count = $RUN_ACCEPTED"
+fi
+
+# Check: run has rejected count
+if [[ "$RUN_REJECTED" -ge 1 ]]; then
+  pass "run has rejected_count = $RUN_REJECTED"
+  detail "Monitoring correctly reports both accepted and rejected counts."
+  log "RESULT: PASS — rejected_count = $RUN_REJECTED"
+else
+  fail_check "run has rejected_count = $RUN_REJECTED (expected >= 1)"
+  fix "Check validation rules in app/validators/output_validator.py"
+  detail "The batch should contain items that fail validation."
+  log "RESULT: FAIL — rejected_count = $RUN_REJECTED"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+# STEP 4 (LO 1d, 3d)
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "4/4" "Verify trusted output and quarantine" "1d, 3d — Data flow end state with validation routing"
+show_command "curl -s $API/admin/metrics | python3 -m json.tool"
+
+log_divider "STEP 4: Verify trusted output and quarantine (LO 1d, 3d)"
+log "COMMAND:"
+log "  curl -s $API/admin/metrics | python3 -m json.tool"
+log ""
+
+METRICS=$(curl -sf "$API/admin/metrics")
+echo "$METRICS" | python3 -m json.tool > "$TMPD/step4.json" 2>&1
+
+log "OUTPUT:"
+cat "$TMPD/step4.json" >> "$LOG"
+log ""
+
+TRUSTED=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['trusted_enriched'])")
+QUARANTINE=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['quarantine_outputs'])")
+
+printf "  ${BLUE}trusted_enriched:${NC}    %s\n" "$TRUSTED"
+printf "  ${BLUE}quarantine_outputs:${NC}  %s\n" "$QUARANTINE"
+echo ""
+
+log "EXTRACTED VALUES:"
+log "  trusted_enriched:   $TRUSTED"
+log "  quarantine_outputs: $QUARANTINE"
+log ""
+log "LO COVERAGE:"
+log "  1d — Data flow complete: accepted rows in trusted ($TRUSTED), rejected in quarantine ($QUARANTINE)"
+log "  3d — Guardrails enforced: bad outputs routed to quarantine, not trusted tables"
+
+# Check: trusted >= 1
+if [[ "$TRUSTED" -ge 1 ]]; then
+  pass "trusted_enriched = $TRUSTED (validated outputs promoted to trusted table)"
+  detail "Good data passed all validation checks and reached the trusted layer."
+  log "RESULT: PASS — trusted_enriched = $TRUSTED"
+else
+  fail_check "trusted_enriched = $TRUSTED (expected >= 1)"
+  fix "./scripts/module1-demo-reset.sh && module4/scripts/preflight_check.sh"
+  detail "At least one batch item should pass validation and be promoted"
+  detail "to the trusted.feedback_enriched table."
+  log "RESULT: FAIL — trusted_enriched = $TRUSTED (expected >= 1)"
+fi
+
+# Check: quarantine >= 1
+if [[ "$QUARANTINE" -ge 1 ]]; then
+  pass "quarantine_outputs = $QUARANTINE (rejected outputs quarantined with reasons)"
+  detail "Rejecting bad output is a successful pipeline outcome."
+  log "RESULT: PASS — quarantine_outputs = $QUARANTINE"
+else
+  fail_check "quarantine_outputs = $QUARANTINE (expected >= 1)"
+  fix "Check validation logic in app/validators/output_validator.py"
+  detail "At least one batch item should fail validation and be routed"
+  detail "to the quarantine.llm_outputs table with rejection reasons."
+  log "RESULT: FAIL — quarantine_outputs = $QUARANTINE (expected >= 1)"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+# LO COVERAGE SUMMARY
+# ═════════════════════════════════════════════════════════════════════════════
+log_divider "LEARNING OBJECTIVE COVERAGE SUMMARY"
+
+log "| LO | Covered in | Proof |"
+log "|----|------------|-------|"
+log "| 1d | Step 4 | trusted=$TRUSTED rows promoted, quarantine=$QUARANTINE rows rejected — data flow routes by validation |"
+log "| 3c | Step 1, Step 3 | Batch total=$TOTAL, accepted=$ACCEPTED, rejected=$REJECTED; pipeline run monitoring works |"
+log "| 3d | Step 1, Step 2, Step 4 | Validation catches hallucinated category; rejected items quarantined with reasons |"
+log ""
+log "All 3 learning objectives (1d, 3c, 3d) are covered by the 4 demo steps."
+
+echo ""
+printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+printf "${BOLD}  LO COVERAGE${NC}\n"
+printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+echo ""
+printf "  ${BLUE}1d${NC}  Step 4      ${DIM}Data flow: trusted=$TRUSTED promoted, quarantine=$QUARANTINE rejected${NC}\n"
+printf "  ${BLUE}3c${NC}  Steps 1, 3  ${DIM}Batch processing + pipeline run monitoring${NC}\n"
+printf "  ${BLUE}3d${NC}  Steps 1, 2, 4  ${DIM}Validation guardrails catch hallucinated outputs${NC}\n"
+
+# ═════════════════════════════════════════════════════════════════════════════
+# VERDICT
+# ═════════════════════════════════════════════════════════════════════════════
+echo ""
+printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+if [[ $ERRORS -eq 0 ]]; then
+  printf "${GREEN}${BOLD}  ✓ ALL CHECKS PASSED — Demo is ready${NC}\n"
+  log ""
+  log "VERDICT: ALL CHECKS PASSED"
+else
+  printf "${RED}${BOLD}  ✗ $ERRORS CHECK(S) FAILED — Fix the issues above${NC}\n"
+  echo ""
+  printf "  ${YELLOW}Quick fix:${NC} ./scripts/module1-demo-reset.sh\n"
+  printf "  ${YELLOW}Then rerun:${NC} module4/scripts/preflight_check.sh\n"
+  log ""
+  log "VERDICT: $ERRORS CHECK(S) FAILED"
+fi
+printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+echo ""
+printf "  ${DIM}Log saved to: module4/preflight_log.txt${NC}\n"
+echo ""
+
+exit $ERRORS
