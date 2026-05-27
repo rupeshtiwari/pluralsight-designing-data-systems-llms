@@ -11,4 +11,5 @@ logs/
 tmp/
 .env
 *.log
+preflight_log.txt
 .DS_Store
