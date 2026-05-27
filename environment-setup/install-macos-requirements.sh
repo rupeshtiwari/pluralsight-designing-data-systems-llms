@@ -70,15 +70,24 @@ echo "Checking Docker Desktop..."
 if ! command -v docker >/dev/null 2>&1; then
   warn "Docker CLI not found. Installing Docker Desktop..."
   brew install --cask docker || true
-  warn "Docker Desktop may need to be opened manually from Applications."
-fi
-
-if ! command -v docker >/dev/null 2>&1; then
-  fail "Docker is still not available. Install Docker Desktop from https://www.docker.com/products/docker-desktop/"
+  echo ""
+  echo "=============================================="
+  echo " Docker Desktop has been installed."
+  echo " Open Docker Desktop from Applications,"
+  echo " wait until it finishes starting,"
+  echo " then rerun this script."
+  echo "=============================================="
+  exit 0
 fi
 
 if ! docker info >/dev/null 2>&1; then
-  fail "Docker Desktop is installed but not running. Start Docker Desktop and rerun this script."
+  echo ""
+  echo "=============================================="
+  echo " Docker Desktop is installed but not running."
+  echo " Open Docker Desktop, wait until it says"
+  echo " Docker is running, then rerun this script."
+  echo "=============================================="
+  exit 1
 fi
 
 pass "Docker is installed and running"
