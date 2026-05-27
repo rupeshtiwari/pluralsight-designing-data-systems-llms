@@ -21,16 +21,51 @@ API="http://localhost:8000"
 TMPD=$(mktemp -d)
 trap 'rm -rf "$TMPD"' EXIT
 
+# ── Colors ──────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
+BLUE='\033[38;2;42;236;250m'
 BOLD='\033[1m'
+DIM='\033[2m'
 NC='\033[0m'
 
 ERRORS=0
-pass() { printf "${GREEN}[PASS]${NC} %s\n" "$1"; }
-fail() { printf "${RED}[FAIL]${NC} %s\n" "$1"; ERRORS=$((ERRORS + 1)); }
-info() { printf "${YELLOW}[....]${NC} %s\n" "$1"; }
+
+pass() {
+  printf "  ${GREEN}✓ PASS${NC}  %s\n" "$1"
+}
+fail_check() {
+  printf "  ${RED}✗ FAIL${NC}  %s\n" "$1"
+  ERRORS=$((ERRORS + 1))
+}
+detail() {
+  printf "           ${DIM}%s${NC}\n" "$1"
+}
+fix() {
+  printf "    ${YELLOW}→ Fix:${NC} %s\n" "$1"
+}
+step_header() {
+  echo ""
+  printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+  printf "${BOLD}  STEP %s: %s${NC}\n" "$1" "$2"
+  printf "${BLUE}  Learning objective: %s${NC}\n" "$3"
+  printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+}
+show_command() {
+  printf "\n  ${DIM}Command:${NC}\n"
+  printf "  ${DIM}\$${NC} %s\n\n" "$1"
+}
+
+# ── Log helpers ─────────────────────────────────────────────────────────────
+log() { echo "$1" >> "$LOG"; }
+log_divider() {
+  log ""
+  log "================================================================================"
+  log "$1"
+  log "================================================================================"
+  log ""
+}
 
 # ── Start log ───────────────────────────────────────────────────────────────
 cat > "$LOG" <<HEADER
@@ -48,40 +83,42 @@ Learning objectives:
 
 HEADER
 
-log() { echo "$1" >> "$LOG"; }
-log_divider() {
-  log ""
-  log "================================================================================"
-  log "$1"
-  log "================================================================================"
-  log ""
-}
-
+# ── Header ──────────────────────────────────────────────────────────────────
 echo ""
-printf "${BOLD}Module 1 Clip 4 — Preflight Check${NC}\n"
-echo "========================================="
-echo ""
+printf "${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}\n"
+printf "${BOLD}║  Module 1 Clip 4 — Preflight Check                        ║${NC}\n"
+printf "${BOLD}║  Enriching e-commerce feedback with FastAPI and DuckDB     ║${NC}\n"
+printf "${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
 
 # ── Server check ────────────────────────────────────────────────────────────
-info "Checking server health..."
+echo ""
+printf "  ${DIM}Checking server at ${API}...${NC}\n"
+
 if ! curl -sf "$API/health" >/dev/null 2>&1; then
-  fail "Server not running at $API. Run: ./scripts/module1-demo-reset.sh"
+  fail_check "Server is not running at $API"
+  fix "./scripts/module1-demo-reset.sh"
+  detail "The reset script will start a fresh server with seed data."
   echo "Server not running" >> "$LOG"
+  echo ""
+  printf "${RED}${BOLD}Cannot continue without a running server. Exiting.${NC}\n\n"
   exit 1
 fi
 pass "Server is healthy"
 log "Server: healthy"
 
-# Seed knowledge base
+# Seed knowledge base silently
 curl -sf -X POST "$API/admin/seed-knowledge-base" >/dev/null 2>&1
 log "Knowledge base: seeded"
 
-# ── STEP 1 (LO 1a) ─────────────────────────────────────────────────────────
-log_divider "STEP 1: Show DuckDB raw feedback input (LO 1a)"
+# ═════════════════════════════════════════════════════════════════════════════
+# STEP 1 (LO 1a)
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "1/4" "Show DuckDB raw feedback input" "1a — Where LLMs fit in data pipelines"
+show_command "curl -s $API/admin/metrics | python3 -m json.tool"
 
-CMD1='curl -s http://localhost:8000/admin/metrics | python3 -m json.tool'
+log_divider "STEP 1: Show DuckDB raw feedback input (LO 1a)"
 log "COMMAND:"
-log "  $CMD1"
+log "  curl -s $API/admin/metrics | python3 -m json.tool"
 log ""
 
 METRICS=$(curl -sf "$API/admin/metrics")
@@ -94,39 +131,50 @@ log ""
 RAW_COUNT=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['raw_feedback'])")
 TRUSTED_BEFORE=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['trusted_enriched'])")
 
+printf "  ${BLUE}raw.feedback:${NC}            %s\n" "$RAW_COUNT"
+printf "  ${BLUE}trusted.feedback_enriched:${NC} %s\n" "$TRUSTED_BEFORE"
+echo ""
+
 log "EXTRACTED VALUES:"
 log "  raw_feedback:     $RAW_COUNT"
 log "  trusted_enriched: $TRUSTED_BEFORE"
 log ""
-
 log "LO COVERAGE:"
 log "  1a — Source data exists in the deterministic pipeline layer (raw.feedback = $RAW_COUNT)"
-log ""
 
+# Check: raw.feedback = 10
 if [[ "$RAW_COUNT" -eq 10 ]]; then
-  pass "Step 1: raw.feedback = $RAW_COUNT"
+  pass "raw.feedback = $RAW_COUNT (10 seed records present)"
   log "RESULT: PASS"
 else
-  fail "Step 1: raw.feedback = $RAW_COUNT (expected 10)"
+  fail_check "raw.feedback = $RAW_COUNT (expected 10)"
+  fix "./scripts/module1-demo-reset.sh"
+  detail "The reset script deletes DuckDB and reloads 10 seed records."
   log "RESULT: FAIL (expected 10)"
 fi
 
+# Check: trusted = 0 (clean baseline)
 if [[ "$TRUSTED_BEFORE" -eq 0 ]]; then
-  pass "Step 1: trusted.enriched = $TRUSTED_BEFORE (clean baseline)"
+  pass "trusted.feedback_enriched = $TRUSTED_BEFORE (clean baseline)"
   log "RESULT: PASS (baseline clean)"
 else
-  fail "Step 1: trusted.enriched = $TRUSTED_BEFORE (expected 0 — run module1-demo-reset.sh)"
+  fail_check "trusted.feedback_enriched = $TRUSTED_BEFORE (expected 0)"
+  fix "./scripts/module1-demo-reset.sh"
+  detail "The reset script kills the server, deletes DuckDB, and restarts."
+  detail "This clears all enrichment results from prior runs."
   log "RESULT: FAIL (expected 0)"
 fi
 
-# ── STEP 2 (LO 1a, 1b) ─────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
+# STEP 2 (LO 1a, 1b)
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "2/4" "Enrich a single feedback record through FastAPI" "1a, 1b — LLM boundary and contract"
+show_command 'curl -s http://localhost:8000/enrich/feedback -H "Content-Type: application/json" -d @data/payloads/feedback_enrich.json'
+
 log_divider "STEP 2: Enrich a single feedback record through FastAPI (LO 1a, 1b)"
-
-CMD2='curl -s http://localhost:8000/enrich/feedback -H "Content-Type: application/json" -d @data/payloads/feedback_enrich.json | python3 -m json.tool'
 log "COMMAND:"
-log "  $CMD2"
+log '  curl -s http://localhost:8000/enrich/feedback -H "Content-Type: application/json" -d @data/payloads/feedback_enrich.json'
 log ""
-
 log "INPUT PAYLOAD (data/payloads/feedback_enrich.json):"
 cat "$PROJECT_ROOT/data/payloads/feedback_enrich.json" >> "$LOG"
 log ""
@@ -147,6 +195,14 @@ SOURCE_DOCS=$(echo "$RESPONSE" | python3 -c "import json,sys; print(', '.join(js
 VAL_STATUS=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['validation_status'])")
 SUMMARY=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['summary'])")
 
+printf "  ${BLUE}request_id:${NC}        %s\n" "$REQUEST_ID"
+printf "  ${BLUE}category:${NC}          %s\n" "$CATEGORY"
+printf "  ${BLUE}confidence:${NC}        %s\n" "$CONFIDENCE"
+printf "  ${BLUE}source_doc_ids:${NC}    %s\n" "$SOURCE_DOCS"
+printf "  ${BLUE}validation_status:${NC} %s\n" "$VAL_STATUS"
+printf "  ${BLUE}summary:${NC}           %s\n" "$SUMMARY"
+echo ""
+
 log "EXTRACTED VALUES:"
 log "  request_id:        $REQUEST_ID"
 log "  category:          $CATEGORY"
@@ -155,43 +211,71 @@ log "  source_doc_ids:    $SOURCE_DOCS"
 log "  validation_status: $VAL_STATUS"
 log "  summary:           $SUMMARY"
 log ""
-
 log "LO COVERAGE:"
 log "  1a — LLM enrichment identifies where AI fits: classification of feedback text"
 log "  1b — Boundary contract enforced: structured JSON output with validation status"
-log ""
 
+# Check: category = product_quality
 if [[ "$CATEGORY" == "product_quality" ]]; then
-  pass "Step 2: category = product_quality"
+  pass "category = product_quality"
+  detail "The feedback mentions 'cracked lid' and 'grinding noise' → product defect."
   log "RESULT: PASS — category = product_quality"
 else
-  fail "Step 2: category = $CATEGORY (expected product_quality)"
+  fail_check "category = $CATEGORY (expected product_quality)"
+  fix "Check keyword matching in app/services/llm.py"
+  detail "The LLM stub classifies based on keywords. 'cracked' and 'grinding'"
+  detail "should map to product_quality. Verify _KEYWORD_MAP in llm.py."
   log "RESULT: FAIL — category = $CATEGORY"
 fi
 
+# Check: confidence >= 0.75
 CONF_OK=$(python3 -c "print(int(float('$CONFIDENCE') >= 0.75))")
 if [[ "$CONF_OK" == "1" ]]; then
-  pass "Step 2: confidence = $CONFIDENCE (>= 0.75)"
+  pass "confidence = $CONFIDENCE (meets 0.75 threshold)"
   log "RESULT: PASS — confidence = $CONFIDENCE"
 else
-  fail "Step 2: confidence = $CONFIDENCE (< 0.75)"
+  fail_check "confidence = $CONFIDENCE (below 0.75 threshold)"
+  fix "Check confidence logic in app/services/llm.py _classify_text()"
+  detail "Confidence is 0.75 + (keyword_hits * 0.05). The payload text"
+  detail "should match at least 1 keyword to reach the threshold."
   log "RESULT: FAIL — confidence below threshold"
 fi
 
+# Check: validation_status = accepted
 if [[ "$VAL_STATUS" == "accepted" ]]; then
-  pass "Step 2: validation_status = accepted"
+  pass "validation_status = accepted"
+  detail "All validation checks passed: schema, grounding, confidence, category."
   log "RESULT: PASS — accepted"
 else
-  fail "Step 2: validation_status = $VAL_STATUS (expected accepted)"
+  fail_check "validation_status = $VAL_STATUS (expected accepted)"
+  fix "Run: curl -s $API/admin/llm-decisions?limit=1 | python3 -m json.tool"
+  detail "Check the 'validation.errors' array in the decision record to see"
+  detail "which specific check failed (schema, grounding, confidence, or category)."
   log "RESULT: FAIL — $VAL_STATUS"
 fi
 
-# ── STEP 3 (LO 1b, 1d) ─────────────────────────────────────────────────────
-log_divider "STEP 3: Verify the decision was stored in llm_decisions (LO 1b, 1d)"
+# Check: source_doc_ids not empty
+if [[ -n "$SOURCE_DOCS" && "$SOURCE_DOCS" != "" ]]; then
+  pass "source_doc_ids = [$SOURCE_DOCS]"
+  detail "Grounded in reference documents from the knowledge base."
+  log "RESULT: PASS — source_doc_ids present"
+else
+  fail_check "source_doc_ids is empty"
+  fix "curl -sf -X POST $API/admin/seed-knowledge-base"
+  detail "The knowledge base may not be seeded. Run the seed command above,"
+  detail "then re-run this preflight check."
+  log "RESULT: FAIL — source_doc_ids empty"
+fi
 
-CMD3='curl -s http://localhost:8000/admin/llm-decisions?limit=1 | python3 -m json.tool'
+# ═════════════════════════════════════════════════════════════════════════════
+# STEP 3 (LO 1b, 1d)
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "3/4" "Verify the decision was stored in llm_decisions" "1b, 1d — Traceability and data flow"
+show_command "curl -s $API/admin/llm-decisions?limit=1 | python3 -m json.tool"
+
+log_divider "STEP 3: Verify the decision was stored in llm_decisions (LO 1b, 1d)"
 log "COMMAND:"
-log "  $CMD3"
+log "  curl -s $API/admin/llm-decisions?limit=1 | python3 -m json.tool"
 log ""
 
 DECISIONS=$(curl -sf "$API/admin/llm-decisions?limit=1")
@@ -206,40 +290,59 @@ DEC_STATUS=$(echo "$DECISIONS" | python3 -c "import json,sys; d=json.load(sys.st
 DEC_ENDPOINT=$(echo "$DECISIONS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0]['endpoint'] if d else 'MISSING')")
 DEC_TOKENS=$(echo "$DECISIONS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"prompt={d[0].get('prompt_tokens',0)} completion={d[0].get('completion_tokens',0)} total={d[0].get('total_tokens',0)}\") if d else print('MISSING')")
 
+printf "  ${BLUE}request_id:${NC} %s\n" "$DEC_REQ_ID"
+printf "  ${BLUE}endpoint:${NC}   %s\n" "$DEC_ENDPOINT"
+printf "  ${BLUE}status:${NC}     %s\n" "$DEC_STATUS"
+printf "  ${BLUE}tokens:${NC}     %s\n" "$DEC_TOKENS"
+echo ""
+
 log "EXTRACTED VALUES:"
 log "  request_id: $DEC_REQ_ID"
 log "  endpoint:   $DEC_ENDPOINT"
 log "  status:     $DEC_STATUS"
 log "  tokens:     $DEC_TOKENS"
 log ""
-
 log "LO COVERAGE:"
 log "  1b — System boundary: every LLM call creates a traceable decision record"
 log "  1d — Data flow: request_id links enrichment output to decision store"
-log ""
 
+# Check: request_id matches Step 2
 if [[ "$DEC_REQ_ID" == "$REQUEST_ID" ]]; then
-  pass "Step 3: request_id matches Step 2"
+  pass "request_id matches Step 2 → end-to-end traceability confirmed"
+  detail "Step 2 request_id: $REQUEST_ID"
+  detail "Step 3 request_id: $DEC_REQ_ID"
   log "RESULT: PASS — request_id $DEC_REQ_ID matches Step 2"
 else
-  fail "Step 3: request_id = $DEC_REQ_ID (expected $REQUEST_ID)"
+  fail_check "request_id mismatch"
+  detail "Step 2 returned: $REQUEST_ID"
+  detail "Step 3 found:    $DEC_REQ_ID"
+  fix "./scripts/module1-demo-reset.sh"
+  detail "This can happen if a prior enrichment call left stale data."
+  detail "Reset clears all in-memory state and starts fresh."
   log "RESULT: FAIL — request_id mismatch"
 fi
 
+# Check: status = accepted
 if [[ "$DEC_STATUS" == "accepted" ]]; then
-  pass "Step 3: status = accepted"
+  pass "decision status = accepted"
   log "RESULT: PASS — status = accepted"
 else
-  fail "Step 3: status = $DEC_STATUS (expected accepted)"
+  fail_check "decision status = $DEC_STATUS (expected accepted)"
+  fix "Check the validation errors in the full decision JSON above"
+  detail "The decision record contains a 'validation.errors' array that"
+  detail "lists exactly which checks failed."
   log "RESULT: FAIL — status = $DEC_STATUS"
 fi
 
-# ── STEP 4 (LO 1d) ─────────────────────────────────────────────────────────
-log_divider "STEP 4: Verify trusted output table received the enriched record (LO 1d)"
+# ═════════════════════════════════════════════════════════════════════════════
+# STEP 4 (LO 1d)
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "4/4" "Verify trusted output table received the enriched record" "1d — Validated output reaches trusted table"
+show_command "curl -s $API/admin/metrics | python3 -m json.tool"
 
-CMD4='curl -s http://localhost:8000/admin/metrics | python3 -m json.tool'
+log_divider "STEP 4: Verify trusted output table received the enriched record (LO 1d)"
 log "COMMAND:"
-log "  $CMD4"
+log "  curl -s $API/admin/metrics | python3 -m json.tool"
 log ""
 
 METRICS_AFTER=$(curl -sf "$API/admin/metrics")
@@ -252,25 +355,35 @@ log ""
 TRUSTED_AFTER=$(echo "$METRICS_AFTER" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['trusted_enriched'])")
 DELTA=$((TRUSTED_AFTER - TRUSTED_BEFORE))
 
+printf "  ${BLUE}trusted.enriched before:${NC} %s\n" "$TRUSTED_BEFORE"
+printf "  ${BLUE}trusted.enriched after:${NC}  %s\n" "$TRUSTED_AFTER"
+printf "  ${BLUE}row count delta:${NC}         ${GREEN}+%s${NC}\n" "$DELTA"
+echo ""
+
 log "EXTRACTED VALUES:"
 log "  trusted_enriched before: $TRUSTED_BEFORE"
 log "  trusted_enriched after:  $TRUSTED_AFTER"
 log "  delta:                   +$DELTA"
 log ""
-
 log "LO COVERAGE:"
 log "  1d — Data flow complete: validated LLM output promoted to trusted table (+$DELTA row)"
-log ""
 
+# Check: delta > 0
 if [[ "$DELTA" -gt 0 ]]; then
-  pass "Step 4: trusted.enriched grew by +$DELTA"
+  pass "trusted.feedback_enriched grew by +$DELTA row"
+  detail "The validated LLM output was promoted from proposal to trusted data."
   log "RESULT: PASS — delta = +$DELTA"
 else
-  fail "Step 4: trusted.enriched did not grow (delta = $DELTA)"
+  fail_check "trusted.feedback_enriched did not grow (delta = $DELTA)"
+  fix "./scripts/module1-demo-reset.sh && module1/scripts/preflight_check.sh"
+  detail "If trusted_before was already > 0, a prior run left data behind."
+  detail "Reset clears the database and starts from scratch."
   log "RESULT: FAIL — no growth"
 fi
 
-# ── LO COVERAGE SUMMARY ────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
+# LO COVERAGE SUMMARY
+# ═════════════════════════════════════════════════════════════════════════════
 log_divider "LEARNING OBJECTIVE COVERAGE SUMMARY"
 
 log "| LO | Covered in | Proof |"
@@ -278,25 +391,38 @@ log "|----|------------|-------|"
 log "| 1a | Step 1, Step 2 | raw.feedback=$RAW_COUNT shows source data; enrichment classifies as product_quality |"
 log "| 1b | Step 2, Step 3 | Structured JSON contract with validation; traceable decision record |"
 log "| 1d | Step 3, Step 4 | request_id links enrichment to decision; trusted table grew by +$DELTA |"
-
 log ""
 log "All 3 learning objectives (1a, 1b, 1d) are covered by the 4 demo steps."
 
-# ── Summary ─────────────────────────────────────────────────────────────────
 echo ""
-echo "========================================="
+printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+printf "${BOLD}  LO COVERAGE${NC}\n"
+printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+echo ""
+printf "  ${BLUE}1a${NC}  Steps 1, 2  ${DIM}Source data + LLM classification${NC}\n"
+printf "  ${BLUE}1b${NC}  Steps 2, 3  ${DIM}Boundary contract + traceable decision${NC}\n"
+printf "  ${BLUE}1d${NC}  Steps 3, 4  ${DIM}Decision traceability + trusted table promotion${NC}\n"
+
+# ═════════════════════════════════════════════════════════════════════════════
+# VERDICT
+# ═════════════════════════════════════════════════════════════════════════════
+echo ""
+printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 if [[ $ERRORS -eq 0 ]]; then
-  printf "${GREEN}${BOLD}All preflight checks passed.${NC}\n"
+  printf "${GREEN}${BOLD}  ✓ ALL CHECKS PASSED — Demo is ready${NC}\n"
   log ""
   log "VERDICT: ALL CHECKS PASSED"
 else
-  printf "${RED}${BOLD}$ERRORS check(s) failed.${NC}\n"
+  printf "${RED}${BOLD}  ✗ $ERRORS CHECK(S) FAILED — Fix the issues above${NC}\n"
+  echo ""
+  printf "  ${YELLOW}Quick fix:${NC} ./scripts/module1-demo-reset.sh\n"
+  printf "  ${YELLOW}Then rerun:${NC} module1/scripts/preflight_check.sh\n"
   log ""
   log "VERDICT: $ERRORS CHECK(S) FAILED"
 fi
-echo "========================================="
+printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 echo ""
-echo "Log saved to: module1/preflight_log.txt"
+printf "  ${DIM}Log saved to: module1/preflight_log.txt${NC}\n"
 echo ""
 
 exit $ERRORS
