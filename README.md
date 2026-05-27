@@ -55,6 +55,9 @@ repo-root/
       output_validator.py      # Schema, grounding, confidence, category, integrity checks
   scripts/
     check-requirements.py      # Post-setup validation (all platforms)
+    seed-data.py               # Initialize DuckDB tables and load seed data
+    demo-up.sh                 # Start Docker environment + wait for health
+    run-story.sh               # Validate demo: health, DuckDB, enrichment, triage, batch
     fmt.py                     # Pluralsight-branded color formatter for demo output
     demo_module1.py            # Automated demo runner for module 1
     demo_module2.py            # Automated demo runner for module 2
@@ -106,10 +109,9 @@ repo-root/
 - Python 3.12+
 - Docker Desktop (or Docker Engine + Docker Compose)
 - DuckDB CLI
+- tmux is optional (only needed for author recording sessions)
 
 ### One-time setup
-
-Run the setup script for your platform. It installs dependencies, creates the virtual environment, sets up `.env`, and validates everything.
 
 **macOS or Linux:**
 ```bash
@@ -121,26 +123,36 @@ Run the setup script for your platform. It installs dependencies, creates the vi
 .\setup.ps1
 ```
 
-**Validate setup anytime:**
+The setup script verifies all prerequisites, creates `.venv`, installs dependencies, builds Docker images, seeds DuckDB, and runs validation. If anything fails it stops with a clear error message.
+
+### Start the demo
+
+```bash
+./scripts/demo-up.sh
+```
+
+This runs `docker compose up -d`, waits for the FastAPI health check, and seeds the knowledge base. No tmux required.
+
+### Validate the demo
+
+```bash
+./scripts/run-story.sh
+```
+
+Runs 5 checks against the live system: health check, DuckDB row count, feedback enrichment, agent triage, and batch pipeline. All checks must pass before recording.
+
+### Validate setup anytime
+
 ```bash
 python scripts/check-requirements.py
 ```
 
-### Run demo environments
+### Author recording sessions (requires tmux)
 
-**Modules 1-2 (local FastAPI server):**
 ```bash
 source .venv/bin/activate
 module1/scripts/demo_up.sh
 tmux attach -t m1-demo
-```
-
-**Modules 3-4 (full Docker stack with Airflow):**
-```bash
-docker compose up -d
-curl -s http://localhost:8000/health | python3 -m json.tool
-module3/scripts/demo_up.sh
-tmux attach -t m3-demo
 ```
 
 ## Recording workflow

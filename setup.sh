@@ -1,161 +1,190 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "Setting up Designing Data Systems with LLMs local environment..."
+# ─────────────────────────────────────────────────────────────────────────────
+# Student-facing setup for "Designing Data Systems with LLMs"
+# Supports macOS and Linux. For Windows use setup.ps1.
+# ─────────────────────────────────────────────────────────────────────────────
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_ROOT"
 
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+ok()   { printf "${GREEN}[OK]${NC}   %s\n" "$1"; }
+fail() { printf "${RED}[FAIL]${NC} %s\n" "$1"; exit 1; }
+info() { printf "${YELLOW}[....]${NC} %s\n" "$1"; }
+hdr()  { printf "\n${BOLD}── %s${NC}\n" "$1"; }
+
+echo ""
+echo "========================================="
+echo " Designing Data Systems with LLMs"
+echo " Project Setup"
+echo "========================================="
+echo ""
 echo "Project root: $PROJECT_ROOT"
 
 OS_NAME="$(uname -s)"
-echo "Detected OS: $OS_NAME"
+echo "Detected OS:  $OS_NAME"
 
-echo ""
-echo "Checking Python 3..."
+# ── 1. Python ────────────────────────────────────────────────────────────────
+hdr "Python 3.12+"
+
 if ! command -v python3 >/dev/null 2>&1; then
-  echo "Python 3.12+ is required."
-  echo "Install Python from https://www.python.org/downloads/ and rerun this script."
-  exit 1
+  fail "python3 not found. Install Python 3.12+ from https://www.python.org/downloads/"
 fi
 
-PYTHON_VERSION="$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')"
-PYTHON_OK="$(python3 -c 'import sys; print(int(sys.version_info >= (3, 12)))')"
+PY_VER="$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')"
+PY_OK="$(python3 -c 'import sys; print(int(sys.version_info >= (3, 12)))')"
 
-if [[ "$PYTHON_OK" != "1" ]]; then
-  echo "Python 3.12+ is required. Detected: $PYTHON_VERSION"
-  exit 1
+if [[ "$PY_OK" != "1" ]]; then
+  fail "Python 3.12+ required (detected $PY_VER). Install from https://www.python.org/downloads/"
 fi
+ok "Python $PY_VER"
 
-echo "Python detected: $PYTHON_VERSION"
+# ── 2. Docker (hard requirement) ─────────────────────────────────────────────
+hdr "Docker"
 
-echo ""
-echo "Checking DuckDB CLI..."
-if ! command -v duckdb >/dev/null 2>&1; then
-  echo "DuckDB CLI not found."
-
-  if [[ "$OS_NAME" == "Darwin" ]]; then
-    if command -v brew >/dev/null 2>&1; then
-      echo "Installing DuckDB CLI with Homebrew..."
-      brew install duckdb
-    else
-      echo "Install Homebrew from https://brew.sh/ or install DuckDB manually:"
-      echo "  https://duckdb.org/docs/installation/"
-      exit 1
-    fi
-  elif [[ "$OS_NAME" == "Linux" ]]; then
-    echo "Install DuckDB CLI using the official instructions:"
-    echo "  https://duckdb.org/docs/installation/"
-    echo "Then rerun this script."
-    exit 1
-  else
-    echo "Unsupported shell OS for automatic DuckDB install: $OS_NAME"
-    echo "For Windows, use setup.ps1."
-    exit 1
-  fi
-else
-  echo "DuckDB detected: $(duckdb --version 2>&1 | head -1)"
-fi
-
-echo ""
-echo "Checking Docker..."
 if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker is required."
-  echo "Install Docker Desktop or Docker Engine and rerun this script."
-  echo "Docker Desktop: https://www.docker.com/products/docker-desktop/"
-  exit 1
+  fail "Docker not found. Install Docker Desktop: https://www.docker.com/products/docker-desktop/"
 fi
 
 if ! docker info >/dev/null 2>&1; then
-  echo "Docker is installed but not running."
-  echo "Start Docker Desktop or Docker Engine and rerun this script."
-  exit 1
+  fail "Docker is installed but the daemon is not running. Start Docker Desktop and rerun this script."
 fi
+ok "Docker daemon is running"
 
-echo "Docker is running."
-
-echo ""
-echo "Checking Docker Compose..."
 if ! docker compose version >/dev/null 2>&1; then
-  echo "Docker Compose is not available."
-  echo "Install Docker Compose: https://docs.docker.com/compose/install/"
-  exit 1
+  fail "Docker Compose not available. Update Docker Desktop or install Compose: https://docs.docker.com/compose/install/"
 fi
-echo "Docker Compose is available."
+ok "Docker Compose $(docker compose version --short 2>/dev/null || echo 'available')"
 
-echo ""
-echo "Creating Python virtual environment..."
-python3 -m venv .venv
+# ── 3. DuckDB CLI ────────────────────────────────────────────────────────────
+hdr "DuckDB CLI"
 
-echo ""
-echo "Activating virtual environment..."
+if ! command -v duckdb >/dev/null 2>&1; then
+  if [[ "$OS_NAME" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
+    info "Installing DuckDB CLI via Homebrew..."
+    brew install duckdb
+  else
+    echo ""
+    echo "  DuckDB CLI is not installed. Install it before running demos."
+    echo ""
+    echo "  macOS (Homebrew):  brew install duckdb"
+    echo "  Linux:             https://duckdb.org/docs/installation/"
+    echo ""
+    fail "DuckDB CLI required. Install it and rerun this script."
+  fi
+fi
+ok "DuckDB CLI $(duckdb --version 2>&1 | head -1)"
+
+# ── 4. tmux (optional) ──────────────────────────────────────────────────────
+hdr "tmux (optional — needed for author recording only)"
+
+if command -v tmux >/dev/null 2>&1; then
+  ok "tmux $(tmux -V 2>/dev/null || echo 'installed')"
+else
+  info "tmux not found. Not required for students. Authors: brew install tmux"
+fi
+
+# ── 5. Virtual environment ───────────────────────────────────────────────────
+hdr "Python virtual environment"
+
+if [[ -d .venv && -f .venv/bin/activate ]]; then
+  ok ".venv already exists"
+else
+  info "Creating .venv..."
+  python3 -m venv .venv
+  ok ".venv created"
+fi
+
 source .venv/bin/activate
 
-echo ""
-echo "Upgrading Python packaging tools..."
-python -m pip install --upgrade pip setuptools wheel
+info "Upgrading pip..."
+python -m pip install --upgrade pip setuptools wheel --quiet
+ok "pip upgraded"
 
-echo ""
-echo "Installing Python dependencies..."
-if [[ -f requirements.txt ]]; then
-  pip install -r requirements.txt
-else
-  echo "requirements.txt not found."
-  echo "Create requirements.txt before using this repo for student demos."
-  exit 1
+# ── 6. Python dependencies ───────────────────────────────────────────────────
+hdr "Python dependencies"
+
+if [[ ! -f requirements.txt ]]; then
+  fail "requirements.txt not found"
 fi
 
-echo ""
-echo "Creating local folders..."
-mkdir -p data logs tmp
+info "Installing from requirements.txt..."
+pip install -r requirements.txt --quiet
+ok "All Python packages installed"
 
-echo ""
-echo "Creating .env file if missing..."
-if [[ ! -f .env ]]; then
-  if [[ -f .env.example ]]; then
-    cp .env.example .env
-    echo "Created .env from .env.example"
-  else
-    cat > .env <<'EOF'
-APP_ENV=local
-APP_HOST=0.0.0.0
-APP_PORT=8000
-DATABASE_URL=postgresql://northwind:northwind@localhost:5432/northwind
+# ── 7. Directories ───────────────────────────────────────────────────────────
+hdr "Project directories"
+
+for dir in data data/seed data/payloads logs tmp .run; do
+  mkdir -p "$dir"
+done
+ok "data/ logs/ tmp/ .run/ created"
+
+# ── 8. Environment file ─────────────────────────────────────────────────────
+hdr "Environment file"
+
+if [[ -f .env ]]; then
+  ok ".env already exists"
+elif [[ -f .env.example ]]; then
+  cp .env.example .env
+  ok "Created .env from .env.example"
+else
+  cat > .env <<'ENVEOF'
+POSTGRES_URL=postgresql://northwind:northwind@localhost:5432/northwind
 DUCKDB_PATH=data/northwind.duckdb
-LLM_MODE=stub
-EOF
-    echo "Created default .env"
-  fi
-else
-  echo ".env already exists"
+LLM_STUB_MODE=true
+ENVEOF
+  ok "Created default .env"
 fi
 
-echo ""
-echo "Validating Docker Compose file..."
-if [[ -f compose.yml || -f docker-compose.yml ]]; then
-  docker compose config >/dev/null
-  echo "Docker Compose config is valid."
+# ── 9. Docker Compose ────────────────────────────────────────────────────────
+hdr "Docker Compose"
 
-  echo ""
-  echo "Building Docker services..."
-  docker compose build
+if [[ -f docker-compose.yml || -f compose.yml ]]; then
+  docker compose config --quiet
+  ok "Compose config is valid"
+
+  info "Building Docker images (this may take a few minutes on first run)..."
+  docker compose build --quiet
+  ok "Docker images built"
 else
-  echo "No compose.yml or docker-compose.yml found. Skipping Docker Compose build."
+  fail "No docker-compose.yml or compose.yml found in project root"
 fi
 
-echo ""
-echo "Running setup validation..."
+# ── 10. Seed DuckDB ─────────────────────────────────────────────────────────
+hdr "Seed data"
+
+info "Initializing DuckDB tables and loading seed data..."
+python scripts/seed-data.py
+ok "DuckDB seeded"
+
+# ── 11. Final validation ────────────────────────────────────────────────────
+hdr "Validation"
+
 python scripts/check-requirements.py
 
+# ── Done ─────────────────────────────────────────────────────────────────────
 echo ""
-echo "Setup complete."
+echo "========================================="
+printf "${GREEN}${BOLD}Setup complete!${NC}\n"
+echo "========================================="
 echo ""
-echo "Next commands:"
-echo "  source .venv/bin/activate"
-echo "  docker compose up -d"
+echo "Next steps:"
 echo ""
-echo "After the app starts, validate with:"
-echo "  curl -s http://localhost:8000/health | python3 -m json.tool"
+echo "  1. Start the demo environment:"
+echo "     ./scripts/demo-up.sh"
 echo ""
-echo "DuckDB check:"
-echo '  duckdb data/northwind.duckdb "SELECT count(*) FROM raw.feedback;"'
+echo "  2. Validate the demo is working:"
+echo "     ./scripts/run-story.sh"
+echo ""
+echo "  3. For author recording (requires tmux):"
+echo "     module1/scripts/demo_up.sh"
+echo "     tmux attach -t m1-demo"
+echo ""
