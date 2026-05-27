@@ -99,7 +99,7 @@ printf "  ${DIM}Checking server at ${API}...${NC}\n"
 
 if ! curl -sf "$API/health" >/dev/null 2>&1; then
   fail_check "Server is not running at $API"
-  fix "./scripts/module1-demo-reset.sh"
+  fix "module2/scripts/demo-reset.sh"
   detail "The reset script will start a fresh server with seed data."
   echo "Server not running" >> "$LOG"
   echo ""
@@ -145,7 +145,7 @@ if [[ "$NODES" -gt 0 ]]; then
   log "RESULT: PASS — $NODES nodes in graph"
 else
   fail_check "State diagram returned 0 nodes (expected nodes in graph)"
-  fix "./scripts/module1-demo-reset.sh"
+  fix "module2/scripts/demo-reset.sh"
   detail "The reset script restarts the server with the agent graph configured."
   log "RESULT: FAIL — no nodes in graph"
 fi
@@ -204,7 +204,7 @@ if [[ "$INCIDENT_ID" == "INC-3001" ]]; then
   log "RESULT: PASS — incident_id = INC-3001"
 else
   fail_check "incident_id = $INCIDENT_ID (expected INC-3001)"
-  fix "./scripts/module1-demo-reset.sh"
+  fix "module2/scripts/demo-reset.sh"
   detail "The server may have stale state. Reset and retry."
   log "RESULT: FAIL — incident_id = $INCIDENT_ID"
 fi
@@ -216,7 +216,7 @@ if [[ "$SEVERITY" == "high" ]]; then
   log "RESULT: PASS — severity = high"
 else
   fail_check "severity = $SEVERITY (expected high)"
-  fix "./scripts/module1-demo-reset.sh"
+  fix "module2/scripts/demo-reset.sh"
   detail "The severity classifier should flag 40% deviation as high."
   detail "Check app/services/llm.py for classify_severity logic."
   log "RESULT: FAIL — severity = $SEVERITY"
@@ -230,7 +230,7 @@ if [[ "$REVIEW_LOWER" == "true" ]]; then
   log "RESULT: PASS — review_required = $REVIEW_REQ"
 else
   fail_check "review_required = $REVIEW_REQ (expected true)"
-  fix "./scripts/module1-demo-reset.sh"
+  fix "module2/scripts/demo-reset.sh"
   detail "The approval gate should set review_required=true for high severity."
   detail "Check the approval_gate logic in the agent workflow."
   log "RESULT: FAIL — review_required = $REVIEW_REQ"
@@ -284,7 +284,7 @@ if [[ "$TOOL_COUNT" -ge 4 ]]; then
   log "RESULT: PASS — $TOOL_COUNT tool calls"
 else
   fail_check "tool_calls = $TOOL_COUNT (expected >= 4)"
-  fix "./scripts/module1-demo-reset.sh"
+  fix "module2/scripts/demo-reset.sh"
   detail "The agent should invoke at least 4 tools: inspect_metadata,"
   detail "retrieve_runbook, classify_severity, recommend_action."
   detail "Reset the server and re-run the triage workflow."
@@ -352,7 +352,7 @@ if [[ "$DEC_INCIDENT" == "INC-3001" ]]; then
   log "RESULT: PASS — decision found for INC-3001"
 else
   fail_check "No decision record found for INC-3001"
-  fix "./scripts/module1-demo-reset.sh"
+  fix "module2/scripts/demo-reset.sh"
   detail "The triage workflow should create a decision record in the decisions store."
   detail "Reset the server and re-run the preflight check."
   log "RESULT: FAIL — no decision for INC-3001"
@@ -366,7 +366,7 @@ if [[ "$DEC_REVIEW_LOWER" == "true" ]]; then
   log "RESULT: PASS — review_required = $DEC_REVIEW"
 else
   fail_check "review_required = $DEC_REVIEW (expected true)"
-  fix "./scripts/module1-demo-reset.sh"
+  fix "module2/scripts/demo-reset.sh"
   detail "The approval gate should flag high-severity incidents for human review."
   detail "Check the approval_gate logic in the agent workflow."
   log "RESULT: FAIL — review_required = $DEC_REVIEW"
@@ -404,10 +404,23 @@ if [[ $ERRORS -eq 0 ]]; then
 else
   printf "${PINK}${BOLD}  ✗ $ERRORS CHECK(S) FAILED — Fix the issues above${NC}\n"
   echo ""
-  printf "  ${BLUE}Quick fix:${NC} ./scripts/module1-demo-reset.sh\n"
+  printf "  ${BLUE}Quick fix:${NC} module2/scripts/demo-reset.sh\n"
   printf "  ${BLUE}Then rerun:${NC} module2/scripts/preflight_check.sh\n"
   log ""
   log "VERDICT: $ERRORS CHECK(S) FAILED"
+  log ""
+  log "HOW TO FIX:"
+  log "  1. Reset the environment:"
+  log "     module2/scripts/demo-reset.sh"
+  log ""
+  log "  2. Rerun the preflight check:"
+  log "     module2/scripts/preflight_check.sh"
+  log ""
+  log "  3. If reset does not fix it, check:"
+  log "     - Is the server running? curl -s http://localhost:8000/health"
+  log "     - Are seed files present? ls data/seed/"
+  log "     - Are payloads present? ls data/payloads/"
+  log "     - Run full setup: ./environment-setup/install-macos-requirements.sh"
 fi
 printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 echo ""

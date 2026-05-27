@@ -100,7 +100,7 @@ printf "  ${DIM}Checking server at ${API}...${NC}\n"
 
 if ! curl -sf "$API/health" >/dev/null 2>&1; then
   fail_check "Server is not running at $API"
-  fix "./scripts/module1-demo-reset.sh"
+  fix "module4/scripts/demo-reset.sh"
   detail "The reset script will start a fresh server with seed data."
   echo "Server not running" >> "$LOG"
   echo ""
@@ -381,7 +381,7 @@ if [[ "$RUN_ACCEPTED" -ge 1 ]]; then
   log "RESULT: PASS — accepted_count = $RUN_ACCEPTED"
 else
   fail_check "run has accepted_count = $RUN_ACCEPTED (expected >= 1)"
-  fix "./scripts/module1-demo-reset.sh && module4/scripts/preflight_check.sh"
+  fix "module4/scripts/demo-reset.sh && module4/scripts/preflight_check.sh"
   detail "The batch run should have at least one accepted item."
   log "RESULT: FAIL — accepted_count = $RUN_ACCEPTED"
 fi
@@ -438,7 +438,7 @@ if [[ "$TRUSTED" -ge 1 ]]; then
   log "RESULT: PASS — trusted_enriched = $TRUSTED"
 else
   fail_check "trusted_enriched = $TRUSTED (expected >= 1)"
-  fix "./scripts/module1-demo-reset.sh && module4/scripts/preflight_check.sh"
+  fix "module4/scripts/demo-reset.sh && module4/scripts/preflight_check.sh"
   detail "At least one batch item should pass validation and be promoted"
   detail "to the trusted.feedback_enriched table."
   log "RESULT: FAIL — trusted_enriched = $TRUSTED (expected >= 1)"
@@ -491,10 +491,23 @@ if [[ $ERRORS -eq 0 ]]; then
 else
   printf "${PINK}${BOLD}  ✗ $ERRORS CHECK(S) FAILED — Fix the issues above${NC}\n"
   echo ""
-  printf "  ${BLUE}Quick fix:${NC} ./scripts/module1-demo-reset.sh\n"
+  printf "  ${BLUE}Quick fix:${NC} module4/scripts/demo-reset.sh\n"
   printf "  ${BLUE}Then rerun:${NC} module4/scripts/preflight_check.sh\n"
   log ""
   log "VERDICT: $ERRORS CHECK(S) FAILED"
+  log ""
+  log "HOW TO FIX:"
+  log "  1. Reset the environment:"
+  log "     module4/scripts/demo-reset.sh"
+  log ""
+  log "  2. Rerun the preflight check:"
+  log "     module4/scripts/preflight_check.sh"
+  log ""
+  log "  3. If reset does not fix it, check:"
+  log "     - Is the server running? curl -s http://localhost:8000/health"
+  log "     - Are seed files present? ls data/seed/"
+  log "     - Are payloads present? ls data/payloads/"
+  log "     - Run full setup: ./environment-setup/install-macos-requirements.sh"
 fi
 printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 echo ""
