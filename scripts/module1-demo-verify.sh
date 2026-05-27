@@ -4,8 +4,11 @@ set -euo pipefail
 # ─────────────────────────────────────────────────────────────────────────────
 # Module 1 Clip 4 — Post-Demo Verification
 #
-# Checks that every proof point from the demo holds. Run this after
-# module1-demo-run.sh to confirm the recording will show correct output.
+# READ-ONLY checks against the current server state. Does NOT call any
+# enrichment endpoints — it only reads what module1-demo-run.sh produced.
+# Safe to run multiple times without creating duplicate rows.
+#
+# Run after module1-demo-run.sh to confirm the recording shows correct output.
 # ─────────────────────────────────────────────────────────────────────────────
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,7 +26,7 @@ fail() { printf "${RED}[FAIL]${NC} %s\n" "$1"; ERRORS=$((ERRORS + 1)); }
 API="http://localhost:8000"
 
 echo ""
-printf "${BOLD}Module 1 — Demo Verification${NC}\n"
+printf "${BOLD}Module 1 — Demo Verification (read-only)${NC}\n"
 echo "========================================="
 echo ""
 
@@ -34,92 +37,61 @@ else
   fail "Server not responding"
 fi
 
-# 2. raw.feedback has data
+# 2. raw.feedback has seed data
 METRICS=$(curl -sf "$API/admin/metrics" 2>/dev/null || echo '{}')
 RAW=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('duckdb',{}).get('raw_feedback',0))" 2>/dev/null || echo "0")
-if [[ "$RAW" -ge 10 ]]; then
-  pass "raw.feedback has $RAW rows (expected >= 10)"
+if [[ "$RAW" -eq 10 ]]; then
+  pass "raw.feedback has $RAW rows (seed data intact)"
 else
-  fail "raw.feedback has $RAW rows (expected >= 10)"
+  fail "raw.feedback has $RAW rows (expected 10)"
 fi
 
-# 3. Enrichment returns correct values
-RESPONSE=$(curl -sf "$API/enrich/feedback" \
-  -H "Content-Type: application/json" \
-  -d @data/payloads/feedback_enrich.json 2>/dev/null || echo '{}')
-
-CATEGORY=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('category',''))" 2>/dev/null || echo "")
-CONFIDENCE=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('confidence',0))" 2>/dev/null || echo "0")
-VAL_STATUS=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('validation_status',''))" 2>/dev/null || echo "")
-REQ_ID=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('request_id',''))" 2>/dev/null || echo "")
-DOCS=$(echo "$RESPONSE" | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('source_doc_ids',[])))" 2>/dev/null || echo "0")
-
-if [[ "$CATEGORY" == "product_quality" ]]; then
-  pass "category = product_quality"
+# 3. trusted.feedback_enriched has exactly 1 row (from the demo run)
+TRUSTED=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('duckdb',{}).get('trusted_enriched',0))" 2>/dev/null || echo "0")
+if [[ "$TRUSTED" -eq 1 ]]; then
+  pass "trusted.feedback_enriched has $TRUSTED row (exactly 1 from demo)"
 else
-  fail "category = $CATEGORY (expected product_quality)"
+  fail "trusted.feedback_enriched has $TRUSTED rows (expected exactly 1)"
 fi
 
-CONF_OK=$(python3 -c "print(int(float('$CONFIDENCE') >= 0.75))" 2>/dev/null || echo "0")
-if [[ "$CONF_OK" == "1" ]]; then
-  pass "confidence = $CONFIDENCE (>= 0.75)"
+# 4. llm_decisions has exactly 1 record
+DECISIONS=$(curl -sf "$API/admin/llm-decisions?limit=10" 2>/dev/null || echo '[]')
+DEC_COUNT=$(echo "$DECISIONS" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+if [[ "$DEC_COUNT" -eq 1 ]]; then
+  pass "llm_decisions has $DEC_COUNT record (exactly 1 from demo)"
 else
-  fail "confidence = $CONFIDENCE (expected >= 0.75)"
+  fail "llm_decisions has $DEC_COUNT records (expected exactly 1)"
 fi
 
-if [[ "$VAL_STATUS" == "accepted" ]]; then
-  pass "validation_status = accepted"
-else
-  fail "validation_status = $VAL_STATUS (expected accepted)"
-fi
+# 5. The decision record has correct values
+DEC_CATEGORY=$(echo "$DECISIONS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0].get('llm_output',{}).get('category','') if d else '')" 2>/dev/null || echo "")
+DEC_STATUS=$(echo "$DECISIONS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0].get('status','') if d else '')" 2>/dev/null || echo "")
+DEC_ENDPOINT=$(echo "$DECISIONS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0].get('endpoint','') if d else '')" 2>/dev/null || echo "")
 
-if [[ "$DOCS" -ge 1 ]]; then
-  pass "source_doc_ids has $DOCS references"
+if [[ "$DEC_CATEGORY" == "product_quality" ]]; then
+  pass "Decision category = product_quality"
 else
-  fail "source_doc_ids is empty (expected >= 1)"
-fi
-
-if [[ -n "$REQ_ID" && "$REQ_ID" != "None" ]]; then
-  pass "request_id = $REQ_ID"
-else
-  fail "request_id is missing"
-fi
-
-# 4. llm_decisions has the same request_id
-DECISIONS=$(curl -sf "$API/admin/llm-decisions?limit=1" 2>/dev/null || echo '[]')
-DEC_ID=$(echo "$DECISIONS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0]['request_id'] if d else '')" 2>/dev/null || echo "")
-DEC_STATUS=$(echo "$DECISIONS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0]['status'] if d else '')" 2>/dev/null || echo "")
-
-if [[ "$DEC_ID" == "$REQ_ID" ]]; then
-  pass "llm_decisions request_id matches enrichment response"
-else
-  fail "llm_decisions request_id = $DEC_ID (expected $REQ_ID)"
+  fail "Decision category = $DEC_CATEGORY (expected product_quality)"
 fi
 
 if [[ "$DEC_STATUS" == "accepted" ]]; then
-  pass "llm_decisions status = accepted"
+  pass "Decision status = accepted"
 else
-  fail "llm_decisions status = $DEC_STATUS (expected accepted)"
+  fail "Decision status = $DEC_STATUS (expected accepted)"
 fi
 
-# 5. trusted.feedback_enriched has rows
-METRICS2=$(curl -sf "$API/admin/metrics" 2>/dev/null || echo '{}')
-TRUSTED=$(echo "$METRICS2" | python3 -c "import json,sys; print(json.load(sys.stdin).get('duckdb',{}).get('trusted_enriched',0))" 2>/dev/null || echo "0")
-if [[ "$TRUSTED" -ge 1 ]]; then
-  pass "trusted.feedback_enriched has $TRUSTED rows"
+if [[ "$DEC_ENDPOINT" == "feedback" ]]; then
+  pass "Decision endpoint = feedback"
 else
-  fail "trusted.feedback_enriched has $TRUSTED rows (expected >= 1)"
+  fail "Decision endpoint = $DEC_ENDPOINT (expected feedback)"
 fi
 
-# 6. Determinism check — run enrichment again, category should be the same
-RESPONSE2=$(curl -sf "$API/enrich/feedback" \
-  -H "Content-Type: application/json" \
-  -d @data/payloads/feedback_enrich.json 2>/dev/null || echo '{}')
-CAT2=$(echo "$RESPONSE2" | python3 -c "import json,sys; print(json.load(sys.stdin).get('category',''))" 2>/dev/null || echo "")
-if [[ "$CAT2" == "$CATEGORY" ]]; then
-  pass "Deterministic: second call also returns category=$CAT2"
+# 6. No quarantine rows (the demo payload should always pass validation)
+QUARANTINE=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('duckdb',{}).get('quarantine_outputs',0))" 2>/dev/null || echo "0")
+if [[ "$QUARANTINE" -eq 0 ]]; then
+  pass "quarantine.llm_outputs has 0 rows (no rejections)"
 else
-  fail "Non-deterministic: first=$CATEGORY, second=$CAT2"
+  fail "quarantine.llm_outputs has $QUARANTINE rows (expected 0)"
 fi
 
 # Summary
@@ -128,7 +100,7 @@ echo "========================================="
 if [[ $ERRORS -eq 0 ]]; then
   printf "${GREEN}${BOLD}All checks passed. Safe to record.${NC}\n"
 else
-  printf "${RED}${BOLD}$ERRORS check(s) failed. Fix before recording.${NC}\n"
+  printf "${RED}${BOLD}$ERRORS check(s) failed. Run module1-demo-reset.sh and try again.${NC}\n"
 fi
 echo "========================================="
 echo ""
