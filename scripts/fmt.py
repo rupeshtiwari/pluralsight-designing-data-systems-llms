@@ -197,7 +197,7 @@ def fmt_feedback(data: dict) -> str:
     lines.append(_heading("Feedback Enrichment"))
     lines.append("")
 
-    # Only the props the author reads aloud
+    # ★ highlight the props the author reads aloud; show the rest as context.
     if data.get("category") is not None:
         lines.append(_hi("category", str(data["category"])))
     if data.get("confidence") is not None:
@@ -207,6 +207,10 @@ def fmt_feedback(data: dict) -> str:
         lines.append(_hi("source_doc_ids", docs))
     if data.get("validation_status") is not None:
         lines.append(_hi("validation_status", str(data["validation_status"])))
+    if data.get("request_id"):
+        lines.append(_ctx("request_id", str(data["request_id"])))
+    if data.get("summary") is not None:
+        lines.append(_ctx("summary", str(data["summary"])))
 
     return "\n".join(lines)
 
@@ -638,16 +642,20 @@ def fmt_metrics(data: dict) -> str:
     lines.append(_heading("Warehouse metrics"))
     lines.append("")
 
+    # Show top-level fields as context, then the duckdb counts with the
+    # proof-point fields ★ highlighted.
+    for key, value in data.items():
+        if not isinstance(value, (dict, list)):
+            lines.append(_ctx(key, str(value)))
+
     duck = data.get("duckdb", {})
     if isinstance(duck, dict) and duck:
-        # Only the warehouse counts the author reads aloud
-        for sk in ("raw_feedback", "trusted_enriched", "quarantine_outputs"):
-            if sk in duck:
-                lines.append(f"  {PINK}★{RESET} {BLUE}{sk}:{RESET} {LGRN}{duck[sk]}{RESET}")
-    else:
-        for key, value in data.items():
-            if not isinstance(value, (dict, list)):
-                lines.append(f"  {PINK}★{RESET} {BLUE}{key}:{RESET} {LGRN}{value}{RESET}")
+        lines.append(f"  {BLUE}duckdb{RESET}")
+        for sk, sv in duck.items():
+            if sk in _METRICS_HIGHLIGHT:
+                lines.append(f"  {PINK}★{RESET} {BLUE}{sk}:{RESET} {LGRN}{sv}{RESET}")
+            else:
+                lines.append(_ctx(sk, str(sv)))
 
     return "\n".join(lines)
 
@@ -699,10 +707,17 @@ def fmt_decisions(data: Any) -> str:
     lines.append(_heading("LLM Decision Record"))
     lines.append("")
 
+    # ★ highlight request_id and status; show the rest as context.
     if record.get("request_id"):
         lines.append(_hi("request_id", str(record["request_id"])))
     if record.get("status"):
         lines.append(_hi("status", str(record["status"])))
+    if record.get("endpoint"):
+        lines.append(_ctx("endpoint", str(record["endpoint"])))
+    p = record.get("prompt_tokens", 0)
+    c = record.get("completion_tokens", 0)
+    t = record.get("total_tokens", 0)
+    lines.append(_ctx("tokens", f"prompt={p} completion={c} total={t}"))
 
     return "\n".join(lines)
 
