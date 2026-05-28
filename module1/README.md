@@ -47,7 +47,9 @@ To start from a clean state:
 **Goal**: Prove source data exists in the deterministic pipeline layer before any LLM processing
 
 ```bash
-curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metrics
+curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metrics \
+  --title "DuckDB warehouse row counts (before enrichment)" \
+  --why "Source data is ready; the trusted table is still empty"
 ```
 
 **Expected output**: `raw_feedback: 10`, `trusted_enriched: 0` (the key counts are marked with ★)
@@ -61,7 +63,9 @@ curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metr
 ```bash
 curl -s http://localhost:8000/enrich/feedback \
   -H "Content-Type: application/json" \
-  -d @data/payloads/feedback_enrich.json | python3 scripts/fmt.py --type feedback
+  -d @data/payloads/feedback_enrich.json | python3 scripts/fmt.py --type feedback \
+  --title "FastAPI enrichment response" \
+  --why "The LLM proposal: category, confidence, and cited sources"
 ```
 
 **Expected output**:
@@ -79,7 +83,9 @@ curl -s http://localhost:8000/enrich/feedback \
 **Goal**: Prove the LLM decision entered the metadata store with full traceability
 
 ```bash
-curl -s http://localhost:8000/admin/llm-decisions?limit=1 | python3 scripts/fmt.py --type decisions
+curl -s http://localhost:8000/admin/llm-decisions?limit=1 | python3 scripts/fmt.py --type decisions \
+  --title "Decision record in llm_decisions" \
+  --why "Same request_id as Step 2 proves end-to-end traceability"
 ```
 
 **Expected output**: A decision record showing the same request_id from Step 2, endpoint=feedback, status=accepted, and token counts (prompt=18, completion=46, total=64)
@@ -91,7 +97,9 @@ curl -s http://localhost:8000/admin/llm-decisions?limit=1 | python3 scripts/fmt.
 **Goal**: Prove that validated LLM output reached the trusted analytical table
 
 ```bash
-curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metrics
+curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metrics \
+  --title "DuckDB warehouse row counts (after enrichment)" \
+  --why "The validated output was promoted to the trusted table"
 ```
 
 **Expected output**: `raw_feedback: 10`, `trusted_enriched: 1` (the count grew from 0 to 1)

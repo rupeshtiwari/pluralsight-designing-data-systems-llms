@@ -29,6 +29,16 @@ DIM = GRAY  # alias
 # Fields to mark with ★, set from --highlight. Empty means use defaults.
 HIGHLIGHT: set[str] = set()
 
+# True once a --title panel is printed, so formatters skip their own heading.
+PANEL_SHOWN = False
+
+
+def _maybe_heading(text: str) -> list[str]:
+    """Return the formatter's own heading lines, unless a panel was shown."""
+    if PANEL_SHOWN:
+        return []
+    return [f"{WHITE}{text}{RESET}", ""]
+
 
 def _should_star(field: str, default: bool) -> bool:
     """Whether a field gets the ★ highlight.
@@ -43,6 +53,29 @@ def _should_star(field: str, default: bool) -> bool:
 # ---------------------------------------------------------------------------
 # Tiny helpers
 # ---------------------------------------------------------------------------
+
+def _panel(title: str, why: str) -> str:
+    """A bordered header explaining what this output shows and why.
+
+    Title in White bold, the 'why' line in Blue, inside a box so it reads
+    like a table header on camera.
+    """
+    width = 64
+    top = "┌" + "─" * (width - 2) + "┐"
+    bot = "└" + "─" * (width - 2) + "┘"
+
+    def row(text: str, color: str) -> str:
+        # Pad/truncate to fit inside the box borders.
+        inner = width - 4
+        t = text if len(text) <= inner else text[: inner - 1] + "…"
+        return f"│ {color}{t}{RESET}{' ' * (inner - len(t))} │"
+
+    lines = [top, row(title, WHITE)]
+    if why:
+        lines.append(row(why, BLUE))
+    lines.append(bot)
+    return "\n".join(lines)
+
 
 def _heading(text: str) -> str:
     return f"{WHITE}{text}{RESET}"
@@ -208,8 +241,7 @@ def _ctx(label: str, value: str) -> str:
 
 def fmt_feedback(data: dict) -> str:
     lines: list[str] = []
-    lines.append(_heading("Feedback Enrichment"))
-    lines.append("")
+    lines.extend(_maybe_heading("Feedback Enrichment"))
 
     # Default starred fields for feedback; --highlight can override.
     order = ["category", "confidence", "source_doc_ids", "validation_status",
@@ -236,8 +268,7 @@ def fmt_feedback(data: dict) -> str:
 
 def fmt_dispute(data: dict) -> str:
     lines: list[str] = []
-    lines.append(_heading("Dispute Summary"))
-    lines.append("")
+    lines.extend(_maybe_heading("Dispute Summary"))
 
     for field in ("request_id", "risk_level", "confidence"):
         v = data.get(field)
@@ -276,8 +307,7 @@ def fmt_dispute(data: dict) -> str:
 
 def fmt_batch(data: dict) -> str:
     lines: list[str] = []
-    lines.append(_heading("Batch Results"))
-    lines.append("")
+    lines.extend(_maybe_heading("Batch Results"))
 
     batch_id = data.get("batch_id")
     if batch_id:
@@ -332,8 +362,7 @@ def fmt_batch(data: dict) -> str:
 
 def fmt_triage(data: dict) -> str:
     lines: list[str] = []
-    lines.append(_heading("Anomaly Triage"))
-    lines.append("")
+    lines.extend(_maybe_heading("Anomaly Triage"))
 
     for field in ("incident_id", "severity"):
         v = data.get(field)
@@ -403,8 +432,7 @@ def fmt_triage(data: dict) -> str:
 
 def fmt_catalog(data: dict) -> str:
     lines: list[str] = []
-    lines.append(_heading("Catalog Enrichment"))
-    lines.append("")
+    lines.extend(_maybe_heading("Catalog Enrichment"))
 
     req_id = data.get("request_id")
     if req_id:
@@ -447,8 +475,7 @@ def fmt_catalog(data: dict) -> str:
 
 def fmt_validation(data: dict) -> str:
     lines: list[str] = []
-    lines.append(_heading("Validation Results"))
-    lines.append("")
+    lines.extend(_maybe_heading("Validation Results"))
 
     checks = data.get("checks", {})
     for name, info in checks.items():
@@ -487,8 +514,7 @@ def fmt_validation(data: dict) -> str:
 
 def fmt_dashboard(data: dict) -> str:
     lines: list[str] = []
-    lines.append(_heading("Governance Dashboard"))
-    lines.append("")
+    lines.extend(_maybe_heading("Governance Dashboard"))
 
     # Top-level counters
     for key in ("total_requests", "allowed", "blocked", "quarantined",
@@ -555,8 +581,7 @@ def fmt_dashboard(data: dict) -> str:
 
 def fmt_audit(data: dict) -> str:
     lines: list[str] = []
-    lines.append(_heading("Audit Log"))
-    lines.append("")
+    lines.extend(_maybe_heading("Audit Log"))
 
     entries = data.get("entries") or data.get("logs") or data.get("events") or []
     # If the top-level object is a single entry, wrap it
@@ -604,8 +629,7 @@ def fmt_audit(data: dict) -> str:
 
 def fmt_health(data: dict) -> str:
     lines: list[str] = []
-    lines.append(_heading("Health Check"))
-    lines.append("")
+    lines.extend(_maybe_heading("Health Check"))
 
     status = data.get("status", "unknown")
     sl = status.lower()
@@ -654,8 +678,7 @@ _METRICS_HIGHLIGHT = {"raw_feedback", "trusted_enriched"}
 
 def fmt_metrics(data: dict) -> str:
     lines: list[str] = []
-    lines.append(_heading("Warehouse metrics"))
-    lines.append("")
+    lines.extend(_maybe_heading("Warehouse metrics"))
 
     # Top-level fields as context; --highlight can star any of them.
     for key, value in data.items():
@@ -721,8 +744,7 @@ def fmt_decisions(data: Any) -> str:
         return fmt_raw(data)
 
     lines: list[str] = []
-    lines.append(_heading("LLM Decision Record"))
-    lines.append("")
+    lines.extend(_maybe_heading("LLM Decision Record"))
 
     # Default starred fields for decisions; --highlight can override.
     defaults = {"request_id", "status"}
@@ -775,6 +797,16 @@ def main() -> None:
         default="",
         help="Comma-separated field names to mark with ★ (overrides defaults)",
     )
+    parser.add_argument(
+        "--title",
+        default="",
+        help="Header title — what this output shows",
+    )
+    parser.add_argument(
+        "--why",
+        default="",
+        help="Header subtitle — why we are showing it",
+    )
     args = parser.parse_args()
 
     global HIGHLIGHT
@@ -809,6 +841,12 @@ def main() -> None:
     if not isinstance(data, dict):
         print(_val(data))
         return
+
+    global PANEL_SHOWN
+    if args.title:
+        print(_panel(args.title, args.why))
+        print()
+        PANEL_SHOWN = True
 
     formatter = FORMATTERS[args.type]
     print(formatter(data))
