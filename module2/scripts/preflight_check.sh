@@ -102,6 +102,14 @@ printf "${BOLD}║  Module 2 Clip 4 — Preflight Check                        �
 printf "${BOLD}║  LangGraph agent triage with PostgreSQL and API tools      ║${NC}\n"
 printf "${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
 
+# ── Reset to a clean baseline ────────────────────────────────────────────────
+# Always reset first so the preflight is reproducible no matter what ran before.
+echo ""
+printf "  ${DIM}Resetting to a clean baseline...${NC}\n"
+if [[ -x "$PROJECT_ROOT/scripts/module1-demo-reset.sh" ]]; then
+  "$PROJECT_ROOT/scripts/module1-demo-reset.sh" >/dev/null 2>&1 || true
+fi
+
 # ── Server check ────────────────────────────────────────────────────────────
 echo ""
 printf "  ${DIM}Checking server at ${API}...${NC}\n"

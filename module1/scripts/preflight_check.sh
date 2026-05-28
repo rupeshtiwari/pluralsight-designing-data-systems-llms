@@ -102,6 +102,15 @@ printf "${BOLD}║  Module 1 Clip 4 — Preflight Check                        �
 printf "${BOLD}║  Enriching e-commerce feedback with FastAPI and DuckDB     ║${NC}\n"
 printf "${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
 
+# ── Reset to a clean baseline ────────────────────────────────────────────────
+# Always reset first so the preflight is reproducible no matter what ran
+# before (a prior demo leaves trusted_enriched > 0, which would fail Step 1).
+echo ""
+printf "  ${DIM}Resetting to a clean baseline...${NC}\n"
+if [[ -x "$PROJECT_ROOT/scripts/module1-demo-reset.sh" ]]; then
+  "$PROJECT_ROOT/scripts/module1-demo-reset.sh" >/dev/null 2>&1 || true
+fi
+
 # ── Server check ────────────────────────────────────────────────────────────
 echo ""
 printf "  ${DIM}Checking server at ${API}...${NC}\n"
