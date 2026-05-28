@@ -44,7 +44,9 @@ This demo runs a NorthWind batch containing ambiguous feedback, stale reference 
 ```bash
 curl -s -X POST http://localhost:8000/pipeline/batch-enrich \
   -H "Content-Type: application/json" \
-  -d "{\"items\": $(cat data/payloads/batch_feedback.json)}" | python3 -m json.tool
+  -d "{\"items\": $(cat data/payloads/batch_feedback.json)}" | python3 scripts/fmt.py --type batch \
+  --title "Batch validation results" \
+  --why "How many records were accepted versus rejected"
 ```
 
 **Expected output**: Batch result showing total=5, accepted=3, rejected=2. Each rejected item shows specific validation_errors.
@@ -58,7 +60,9 @@ curl -s -X POST http://localhost:8000/pipeline/batch-enrich \
 ```bash
 curl -s -X POST http://localhost:8000/validate/output \
   -H "Content-Type: application/json" \
-  -d '{"output": {"category": "electronics_repair", "summary": "Customer needs repair", "confidence": 0.92, "source_doc_ids": ["DOC-001"]}}' | python3 -m json.tool
+  -d '{"output": {"category": "electronics_repair", "summary": "Customer needs repair", "confidence": 0.92, "source_doc_ids": ["DOC-001"]}}' | python3 scripts/fmt.py --type validation \
+  --title "Validation checks on a bad output" \
+  --why "One failed check is enough to reject the record"
 ```
 
 **Expected output**: Validation result showing is_valid=false, category check FAIL (electronics_repair not in allowed list), confidence check PASS, grounding check PASS.
@@ -70,7 +74,9 @@ curl -s -X POST http://localhost:8000/validate/output \
 **Goal**: Show operational monitoring data — accepted, rejected, and validation summary
 
 ```bash
-curl -s http://localhost:8000/pipeline/runs | python3 -m json.tool
+curl -s http://localhost:8000/pipeline/runs | python3 scripts/fmt.py --type raw \
+  --title "Pipeline run summary" \
+  --why "Accepted and rejected counts for monitoring"
 ```
 
 **Expected output**: Pipeline run records showing accepted_count and rejected_count for the batch from Step 1.
@@ -82,7 +88,9 @@ curl -s http://localhost:8000/pipeline/runs | python3 -m json.tool
 **Goal**: Prove the data flow end state — good data in trusted, bad data in quarantine with reasons
 
 ```bash
-curl -s http://localhost:8000/admin/metrics | python3 -m json.tool
+curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metrics \
+  --title "DuckDB trusted and quarantine counts" \
+  --why "Bad data quarantined, good data in trusted" --highlight trusted_enriched,quarantine_outputs
 ```
 
 **Expected output**: trusted_enriched shows accepted rows; quarantine_outputs shows rejected rows.
