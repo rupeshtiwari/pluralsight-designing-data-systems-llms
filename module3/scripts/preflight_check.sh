@@ -60,6 +60,15 @@ show_command() {
   printf "\n  ${DIM}Command:${NC}\n"
   printf "  ${DIM}\$${NC} %s\n\n" "$1"
 }
+# highlight: a KEY property the author reads aloud on camera.
+# Label in Blue, value in Limited Green, marked with ★ so it stands out.
+highlight() {
+  printf "  ${PINK}★${NC} ${BLUE}%s${NC} ${LGREEN}%s${NC}\n" "$1" "$2"
+}
+# field: a supporting value shown for context but not narrated.
+field() {
+  printf "    ${GRAY}%s${NC} ${GRAY}%s${NC}\n" "$1" "$2"
+}
 
 # ── Log helpers ─────────────────────────────────────────────────────────────
 log() { echo "$1" >> "$LOG"; }
@@ -141,9 +150,11 @@ TRIGGER_STATUS=$(echo "$TRIGGER_RESP" | python3 -c "import json,sys; print(json.
 TRIGGER_BATCH=$(echo "$TRIGGER_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('batch_id','MISSING'))")
 TRIGGER_DAG=$(echo "$TRIGGER_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('dag_id','MISSING'))")
 
-printf "  ${BLUE}batch_id:${NC} %s\n" "$TRIGGER_BATCH"
-printf "  ${BLUE}dag_id:${NC}   %s\n" "$TRIGGER_DAG"
-printf "  ${BLUE}status:${NC}   %s\n" "$TRIGGER_STATUS"
+highlight "status:" "$TRIGGER_STATUS"
+highlight "batch_id:" "$TRIGGER_BATCH"
+field     "dag_id:" "$TRIGGER_DAG"
+echo ""
+printf "  ${GRAY}★ = read these values aloud on camera${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
@@ -197,7 +208,9 @@ log ""
 
 RUN_COUNT=$(echo "$RUNS_RESP" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
 
-printf "  ${BLUE}pipeline runs returned:${NC} %s\n" "$RUN_COUNT"
+highlight "pipeline runs returned:" "$RUN_COUNT"
+echo ""
+printf "  ${GRAY}★ = read this value aloud on camera${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
@@ -267,10 +280,12 @@ BATCH_TOTAL=$(echo "$ENRICH_RESP" | python3 -c "import json,sys; print(json.load
 BATCH_ACCEPTED=$(echo "$ENRICH_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin)['accepted'])")
 BATCH_REJECTED=$(echo "$ENRICH_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin)['rejected'])")
 
-printf "  ${BLUE}batch_id:${NC}  %s\n" "$BATCH_ID"
-printf "  ${BLUE}total:${NC}     %s\n" "$BATCH_TOTAL"
-printf "  ${BLUE}accepted:${NC}  %s\n" "$BATCH_ACCEPTED"
-printf "  ${BLUE}rejected:${NC}  %s\n" "$BATCH_REJECTED"
+highlight "total:" "$BATCH_TOTAL"
+highlight "accepted:" "$BATCH_ACCEPTED"
+highlight "rejected:" "$BATCH_REJECTED"
+field     "batch_id:" "$BATCH_ID"
+echo ""
+printf "  ${GRAY}★ = read these values aloud on camera${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
@@ -340,8 +355,10 @@ log ""
 TRUSTED=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['trusted_enriched'])")
 QUARANTINE=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['quarantine_outputs'])")
 
-printf "  ${BLUE}trusted_enriched:${NC}   %s\n" "$TRUSTED"
-printf "  ${BLUE}quarantine_outputs:${NC} %s\n" "$QUARANTINE"
+highlight "trusted_enriched:" "$TRUSTED"
+highlight "quarantine_outputs:" "$QUARANTINE"
+echo ""
+printf "  ${GRAY}★ = read these values aloud on camera${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"

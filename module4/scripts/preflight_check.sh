@@ -60,6 +60,15 @@ show_command() {
   printf "\n  ${DIM}Command:${NC}\n"
   printf "  ${DIM}\$${NC} %s\n\n" "$1"
 }
+# highlight: a KEY property the author reads aloud on camera.
+# Label in Blue, value in Limited Green, marked with ★ so it stands out.
+highlight() {
+  printf "  ${PINK}★${NC} ${BLUE}%s${NC} ${LGREEN}%s${NC}\n" "$1" "$2"
+}
+# field: a supporting value shown for context but not narrated.
+field() {
+  printf "    ${GRAY}%s${NC} ${GRAY}%s${NC}\n" "$1" "$2"
+}
 
 # ── Log helpers ─────────────────────────────────────────────────────────────
 log() { echo "$1" >> "$LOG"; }
@@ -151,11 +160,13 @@ ACCEPTED=$(echo "$BATCH_RESPONSE" | python3 -c "import json,sys; print(json.load
 REJECTED=$(echo "$BATCH_RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['rejected'])")
 QUARANTINED=$(echo "$BATCH_RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['quarantined'])")
 
-printf "  ${BLUE}batch_id:${NC}     %s\n" "$BATCH_ID"
-printf "  ${BLUE}total:${NC}        %s\n" "$TOTAL"
-printf "  ${BLUE}accepted:${NC}     %s\n" "$ACCEPTED"
-printf "  ${BLUE}rejected:${NC}     %s\n" "$REJECTED"
-printf "  ${BLUE}quarantined:${NC}  %s\n" "$QUARANTINED"
+highlight "total:" "$TOTAL"
+highlight "accepted:" "$ACCEPTED"
+highlight "rejected:" "$REJECTED"
+field     "batch_id:" "$BATCH_ID"
+field     "quarantined:" "$QUARANTINED"
+echo ""
+printf "  ${GRAY}★ = read these values aloud on camera${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
@@ -254,12 +265,15 @@ else:
     print('NOT_FOUND')
 ")
 
-printf "  ${BLUE}is_valid:${NC}  %s\n" "$IS_VALID"
-printf "  ${BLUE}checks:${NC}\n"
+highlight "is_valid:" "$IS_VALID"
+highlight "category check:" "$CATEGORY_CHECK"
+field     "checks:" ""
 while IFS= read -r line; do
   printf "    ${GRAY}%s${NC}\n" "$line"
 done <<< "$CHECKS"
-printf "  ${BLUE}errors:${NC}    %s\n" "$VAL_ERRORS"
+field     "errors:" "$VAL_ERRORS"
+echo ""
+printf "  ${GRAY}★ = read these values aloud on camera${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
@@ -349,10 +363,12 @@ else:
     print('no qualifying run')
 ")
 
-printf "  ${BLUE}pipeline runs found:${NC}  %s\n" "$RUN_COUNT"
-printf "  ${BLUE}latest run status:${NC}    %s\n" "$RUN_STATUS"
-printf "  ${BLUE}accepted_count:${NC}       %s\n" "$RUN_ACCEPTED"
-printf "  ${BLUE}rejected_count:${NC}       %s\n" "$RUN_REJECTED"
+highlight "accepted_count:" "$RUN_ACCEPTED"
+highlight "rejected_count:" "$RUN_REJECTED"
+field     "pipeline runs found:" "$RUN_COUNT"
+field     "latest run status:" "$RUN_STATUS"
+echo ""
+printf "  ${GRAY}★ = read these values aloud on camera${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
@@ -419,8 +435,10 @@ log ""
 TRUSTED=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['trusted_enriched'])")
 QUARANTINE=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['quarantine_outputs'])")
 
-printf "  ${BLUE}trusted_enriched:${NC}    %s\n" "$TRUSTED"
-printf "  ${BLUE}quarantine_outputs:${NC}  %s\n" "$QUARANTINE"
+highlight "trusted_enriched:" "$TRUSTED"
+highlight "quarantine_outputs:" "$QUARANTINE"
+echo ""
+printf "  ${GRAY}★ = read these values aloud on camera${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"

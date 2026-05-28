@@ -60,6 +60,15 @@ show_command() {
   printf "\n  ${DIM}Command:${NC}\n"
   printf "  ${DIM}\$${NC} %s\n\n" "$1"
 }
+# highlight: a KEY property the author reads aloud on camera.
+# Label in Blue, value in Limited Green, marked with ★ so it stands out.
+highlight() {
+  printf "  ${PINK}★${NC} ${BLUE}%s${NC} ${LGREEN}%s${NC}\n" "$1" "$2"
+}
+# field: a supporting value shown for context but not narrated.
+field() {
+  printf "    ${GRAY}%s${NC} ${GRAY}%s${NC}\n" "$1" "$2"
+}
 
 # ── Log helpers ─────────────────────────────────────────────────────────────
 log() { echo "$1" >> "$LOG"; }
@@ -129,7 +138,9 @@ log ""
 
 NODES=$(echo "$GRAPH" | python3 -c "import json,sys; d=json.load(sys.stdin); nodes=d.get('nodes',d.get('graph',{}).get('nodes',[])); print(len(nodes) if isinstance(nodes,list) else len(nodes.keys()))")
 
-printf "  ${BLUE}node count:${NC} %s\n" "$NODES"
+highlight "node count:" "$NODES"
+echo ""
+printf "  ${GRAY}★ = read this value aloud on camera${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
@@ -179,11 +190,13 @@ REVIEW_REQ=$(echo "$TRIAGE" | python3 -c "import json,sys; print(json.load(sys.s
 REC_ACTION=$(echo "$TRIAGE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('recommended_action','N/A'))" 2>/dev/null || echo "N/A")
 ROOT_CAUSE=$(echo "$TRIAGE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('root_cause_hypothesis','N/A'))" 2>/dev/null || echo "N/A")
 
-printf "  ${BLUE}incident_id:${NC}          %s\n" "$INCIDENT_ID"
-printf "  ${BLUE}severity:${NC}             %s\n" "$SEVERITY"
-printf "  ${BLUE}review_required:${NC}      %s\n" "$REVIEW_REQ"
-printf "  ${BLUE}recommended_action:${NC}   %s\n" "$REC_ACTION"
-printf "  ${BLUE}root_cause_hypothesis:${NC} %s\n" "$ROOT_CAUSE"
+highlight "severity:" "$SEVERITY"
+highlight "root_cause_hypothesis:" "$ROOT_CAUSE"
+highlight "recommended_action:" "$REC_ACTION"
+highlight "review_required:" "$REVIEW_REQ"
+field     "incident_id:" "$INCIDENT_ID"
+echo ""
+printf "  ${GRAY}★ = read these values aloud on camera${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
@@ -266,8 +279,10 @@ else:
 print(', '.join(names))
 ")
 
-printf "  ${BLUE}tool_call count:${NC} %s\n" "$TOOL_COUNT"
-printf "  ${BLUE}tool names:${NC}     %s\n" "$TOOL_NAMES"
+highlight "tool_call count:" "$TOOL_COUNT"
+highlight "tool names:" "$TOOL_NAMES"
+echo ""
+printf "  ${GRAY}★ = read these values aloud on camera${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
@@ -331,9 +346,11 @@ match = [x for x in decs if x.get('incident_id')=='INC-3001']
 print(match[0].get('severity','N/A') if match else 'MISSING')
 ")
 
-printf "  ${BLUE}incident_id:${NC}     %s\n" "$DEC_INCIDENT"
-printf "  ${BLUE}severity:${NC}        %s\n" "$DEC_SEVERITY"
-printf "  ${BLUE}review_required:${NC} %s\n" "$DEC_REVIEW"
+highlight "review_required:" "$DEC_REVIEW"
+field     "incident_id:" "$DEC_INCIDENT"
+field     "severity:" "$DEC_SEVERITY"
+echo ""
+printf "  ${GRAY}★ = read this value aloud on camera (the approval gate)${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
