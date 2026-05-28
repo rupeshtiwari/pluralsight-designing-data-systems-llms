@@ -1,5 +1,13 @@
 # Module 3 — Clip 4: Triggering and monitoring an Airflow enrichment pipeline with FastAPI and DuckDB
 
+## Why this matters
+
+**The problem:** A demo that works once in a notebook is not a production pipeline. Real systems run on a schedule, retry on failure, branch when data is bad, and leave a trail you can audit. How do you take an LLM enrichment step and wrap it in orchestration that operators can trust and monitor — without turning the orchestrator into an uncontrolled agent?
+
+**What you will see:** An Airflow DAG triggered from a new batch, moving through deterministic transform tasks and then a dynamic branch that routes good records to the trusted table and bad records to quarantine. You trace one batch from trigger to request ID to validation result to the final row.
+
+**What you walk away with:** A clear picture of when to use a static DAG versus bounded dynamic branching (3a), the concrete steps to call an LLM service from an Airflow task (3b), and how to trigger and monitor the run by disposition — accepted, rejected, quarantined — not just by task success (3c, 3d).
+
 ## Overview
 
 This demo triggers the NorthWind Airflow DAG from a new source batch and shows the complete pipeline lifecycle. It demonstrates both static transform tasks and dynamic validation branching, then verifies accepted records in the trusted output and failed records in quarantine.

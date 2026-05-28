@@ -1,5 +1,13 @@
 # Module 4 — Clip 4: Rejecting hallucinated and schema-drifted LLM outputs in Airflow
 
+## Why this matters
+
+**The problem:** LLMs hallucinate. They invent categories that do not exist, cite sources they never read, and return confident answers that are simply wrong. If you treat every generated field as usable data, those errors flow straight into the analytical tables your business depends on. How do you stop bad LLM output before it contaminates trusted data?
+
+**What you will see:** A batch deliberately seeded with bad outputs — a hallucinated category, missing source references, and a low-confidence guess — run through the validation layer. You watch each check catch its specific failure, route the bad records to quarantine with a reason, and let only the valid record through.
+
+**What you walk away with:** A validation gate that turns generated text into trustworthy data (1d), monitoring that reports accepted, rejected, and quarantined counts so quality problems are visible (3c), and the guardrail mindset that rejecting bad output is a successful pipeline outcome, not a failure (3d).
+
 ## Overview
 
 This demo runs a NorthWind batch containing ambiguous feedback, stale reference context, and invalid category values through the validation pipeline. It proves that validation checks catch hallucinated categories, missing source references, and low-confidence outputs, routing them to quarantine while accepting valid records into trusted tables.

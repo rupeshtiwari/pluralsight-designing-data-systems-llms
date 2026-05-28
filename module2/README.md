@@ -1,5 +1,13 @@
 # Module 2 — Clip 4: LangGraph agent triage with PostgreSQL and API tools
 
+## Why this matters
+
+**The problem:** When a data quality check fails at 2 a.m., someone has to inspect the metadata, find the right runbook, judge the severity, and decide what to do. Teams want to automate that triage with an agent, but an agent that takes actions on its own can quietly trigger the wrong fix on production data. How do you let an agent reason through multiple steps without handing it the keys?
+
+**What you will see:** A LangGraph agent that moves through explicit nodes — inspect metadata, retrieve the runbook, classify severity, recommend an action — and then stops at an approval gate. Every tool call is recorded, and the final decision is marked review_required instead of being executed automatically.
+
+**What you walk away with:** A design for multi-step decision pipelines that automate the tedious investigation work (2a) while integrating database and API tools through narrow, traceable contracts (2b). You see exactly where to put the human approval gate so the agent advises but never acts unsupervised.
+
 ## Overview
 
 This demo runs a LangGraph workflow for a failed NorthWind finance data quality check. It shows the agent stepping through inspect_metadata, retrieve_runbook, classify_severity, and recommend_action nodes, then stopping at an approval gate. Every tool call is recorded in PostgreSQL and the final decision requires human review.

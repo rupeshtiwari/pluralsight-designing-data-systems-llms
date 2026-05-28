@@ -1,5 +1,13 @@
 # Module 1 — Clip 4: Enriching e-commerce feedback with FastAPI, DuckDB, and pgvector
 
+## Why this matters
+
+**The problem:** Your team wants to use an LLM to classify thousands of customer feedback records, but a wrong classification that silently lands in a trusted analytics table can mislead every dashboard and decision downstream. How do you let an LLM enrich your data without letting it corrupt your warehouse?
+
+**What you will see:** A working boundary where raw feedback flows in, the LLM proposes a classification with a confidence score and cited sources, and the output only reaches the trusted table after it passes validation. Nothing the model says is treated as fact until it earns that status.
+
+**What you walk away with:** A repeatable pattern for placing an LLM inside an existing pipeline (1a), drawing a clean line between deterministic and AI-driven steps (1b), and designing a data flow where every LLM output is traceable and validated before it becomes trusted data (1d). This is the foundation every later module builds on.
+
 ## Overview
 
 This demo runs the NorthWind feedback enrichment flow from DuckDB source records through FastAPI LLM enrichment to the trusted output table. It proves that LLM outputs enter trusted tables only after schema, grounding, confidence, and source ID validation passes.
