@@ -26,6 +26,20 @@ WHITE = "\033[1;37m"                 # White bold      - section headings
 RESET = "\033[0m"
 DIM = GRAY  # alias
 
+# Fields to mark with ★, set from --highlight. Empty means use defaults.
+HIGHLIGHT: set[str] = set()
+
+
+def _should_star(field: str, default: bool) -> bool:
+    """Whether a field gets the ★ highlight.
+
+    If --highlight was passed, only those fields are starred. Otherwise
+    fall back to the formatter's default choice.
+    """
+    if HIGHLIGHT:
+        return field in HIGHLIGHT
+    return default
+
 # ---------------------------------------------------------------------------
 # Tiny helpers
 # ---------------------------------------------------------------------------
@@ -197,20 +211,21 @@ def fmt_feedback(data: dict) -> str:
     lines.append(_heading("Feedback Enrichment"))
     lines.append("")
 
-    # ★ highlight the props the author reads aloud; show the rest as context.
-    if data.get("category") is not None:
-        lines.append(_hi("category", str(data["category"])))
-    if data.get("confidence") is not None:
-        lines.append(_hi("confidence", str(data["confidence"])))
-    if data.get("source_doc_ids") is not None:
-        docs = ", ".join(str(d) for d in data["source_doc_ids"])
-        lines.append(_hi("source_doc_ids", docs))
-    if data.get("validation_status") is not None:
-        lines.append(_hi("validation_status", str(data["validation_status"])))
-    if data.get("request_id"):
-        lines.append(_ctx("request_id", str(data["request_id"])))
-    if data.get("summary") is not None:
-        lines.append(_ctx("summary", str(data["summary"])))
+    # Default starred fields for feedback; --highlight can override.
+    order = ["category", "confidence", "source_doc_ids", "validation_status",
+             "request_id", "summary"]
+    defaults = {"category", "confidence", "source_doc_ids", "validation_status"}
+    for field in order:
+        if data.get(field) is None:
+            continue
+        if field == "source_doc_ids":
+            value = ", ".join(str(d) for d in data[field])
+        else:
+            value = str(data[field])
+        if _should_star(field, field in defaults):
+            lines.append(_hi(field, value))
+        else:
+            lines.append(_ctx(field, value))
 
     return "\n".join(lines)
 
@@ -633,8 +648,8 @@ def fmt_health(data: dict) -> str:
 # Format: metrics
 # ---------------------------------------------------------------------------
 
-# DuckDB warehouse counts are the demo proof points — highlight them with ★.
-_METRICS_HIGHLIGHT = {"raw_feedback", "trusted_enriched", "quarantine_outputs"}
+# Default starred metric fields. Override per step with --highlight.
+_METRICS_HIGHLIGHT = {"raw_feedback", "trusted_enriched"}
 
 
 def fmt_metrics(data: dict) -> str:
@@ -642,17 +657,19 @@ def fmt_metrics(data: dict) -> str:
     lines.append(_heading("Warehouse metrics"))
     lines.append("")
 
-    # Show top-level fields as context, then the duckdb counts with the
-    # proof-point fields ★ highlighted.
+    # Top-level fields as context; --highlight can star any of them.
     for key, value in data.items():
         if not isinstance(value, (dict, list)):
-            lines.append(_ctx(key, str(value)))
+            if _should_star(key, False):
+                lines.append(_hi(key, str(value)))
+            else:
+                lines.append(_ctx(key, str(value)))
 
     duck = data.get("duckdb", {})
     if isinstance(duck, dict) and duck:
         lines.append(f"  {BLUE}duckdb{RESET}")
         for sk, sv in duck.items():
-            if sk in _METRICS_HIGHLIGHT:
+            if _should_star(sk, sk in _METRICS_HIGHLIGHT):
                 lines.append(f"  {PINK}★{RESET} {BLUE}{sk}:{RESET} {LGRN}{sv}{RESET}")
             else:
                 lines.append(_ctx(sk, str(sv)))
@@ -707,17 +724,22 @@ def fmt_decisions(data: Any) -> str:
     lines.append(_heading("LLM Decision Record"))
     lines.append("")
 
-    # ★ highlight request_id and status; show the rest as context.
+    # Default starred fields for decisions; --highlight can override.
+    defaults = {"request_id", "status"}
     if record.get("request_id"):
-        lines.append(_hi("request_id", str(record["request_id"])))
+        rid, val = "request_id", str(record["request_id"])
+        lines.append(_hi(rid, val) if _should_star(rid, rid in defaults) else _ctx(rid, val))
     if record.get("status"):
-        lines.append(_hi("status", str(record["status"])))
+        st, val = "status", str(record["status"])
+        lines.append(_hi(st, val) if _should_star(st, st in defaults) else _ctx(st, val))
     if record.get("endpoint"):
-        lines.append(_ctx("endpoint", str(record["endpoint"])))
+        ep, val = "endpoint", str(record["endpoint"])
+        lines.append(_hi(ep, val) if _should_star(ep, False) else _ctx(ep, val))
     p = record.get("prompt_tokens", 0)
     c = record.get("completion_tokens", 0)
     t = record.get("total_tokens", 0)
-    lines.append(_ctx("tokens", f"prompt={p} completion={c} total={t}"))
+    tok_val = f"prompt={p} completion={c} total={t}"
+    lines.append(_hi("tokens", tok_val) if _should_star("tokens", False) else _ctx("tokens", tok_val))
 
     return "\n".join(lines)
 
@@ -748,7 +770,16 @@ def main() -> None:
         default="raw",
         help="Formatting mode (default: raw)",
     )
+    parser.add_argument(
+        "--highlight",
+        default="",
+        help="Comma-separated field names to mark with ★ (overrides defaults)",
+    )
     args = parser.parse_args()
+
+    global HIGHLIGHT
+    if args.highlight:
+        HIGHLIGHT = {f.strip() for f in args.highlight.split(",") if f.strip()}
 
     raw = sys.stdin.read().strip()
     if not raw:
