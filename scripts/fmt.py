@@ -182,32 +182,40 @@ def _section(title: str, lines: list[str]) -> str:
 # Format: feedback
 # ---------------------------------------------------------------------------
 
+def _hi(label: str, value: str) -> str:
+    """Highlighted line — ★ marker, blue label, limited-green value."""
+    return f"  {PINK}★{RESET} {BLUE}{label}:{RESET} {LGRN}{value}{RESET}"
+
+
+def _ctx(label: str, value: str) -> str:
+    """Context line — dimmed, not narrated."""
+    return f"    {GRAY}{label}: {value}{RESET}"
+
+
 def fmt_feedback(data: dict) -> str:
     lines: list[str] = []
     lines.append(_heading("Feedback Enrichment"))
     lines.append("")
 
-    req_id = data.get("request_id", "")
-    if req_id:
-        lines.append(_kv("Request ID", req_id))
+    # Highlighted props the author reads aloud
+    if data.get("category") is not None:
+        lines.append(_hi("category", str(data["category"])))
+    if data.get("confidence") is not None:
+        lines.append(_hi("confidence", str(data["confidence"])))
+    if data.get("source_doc_ids") is not None:
+        docs = ", ".join(str(d) for d in data["source_doc_ids"])
+        lines.append(_hi("source_doc_ids", docs))
+    if data.get("validation_status") is not None:
+        lines.append(_hi("validation_status", str(data["validation_status"])))
 
-    for field in ("category", "summary", "confidence", "validation_status"):
-        v = data.get(field)
-        if v is not None:
-            lines.append(_kv(field.replace("_", " ").title(), v))
+    # Context props shown but not narrated
+    if data.get("request_id"):
+        lines.append(_ctx("request_id", str(data["request_id"])))
+    if data.get("summary") is not None:
+        lines.append(_ctx("summary", str(data["summary"])))
 
-    doc_ids = data.get("source_doc_ids")
-    if doc_ids is not None:
-        lines.append(f"{_label('Source Docs')}  {_num(doc_ids)}")
-
-    rails = _rails_line(data)
-    if rails:
-        lines.append("")
-        lines.append(rails)
-
-    tok = data.get("token_usage") or data.get("usage") or data.get("tokens")
-    if tok is not None:
-        lines.append(_tokens(data, force_blocked=_is_blocked(data)))
+    lines.append("")
+    lines.append(f"  {GRAY}★ = read aloud: category, confidence, sources, status{RESET}")
 
     return "\n".join(lines)
 
@@ -630,28 +638,30 @@ def fmt_health(data: dict) -> str:
 # Format: metrics
 # ---------------------------------------------------------------------------
 
+# DuckDB warehouse counts are the demo proof points — highlight them with ★.
+_METRICS_HIGHLIGHT = {"raw_feedback", "trusted_enriched", "quarantine_outputs"}
+
+
 def fmt_metrics(data: dict) -> str:
     lines: list[str] = []
-    lines.append(_heading("Metrics"))
+    lines.append(_heading("Warehouse metrics"))
     lines.append("")
 
-    for key, value in data.items():
-        if isinstance(value, dict):
-            lines.append(f"{_label(key)}")
-            for sk, sv in value.items():
-                lines.append(f"  {_label(sk)}  {_val(sv)}")
-        elif isinstance(value, list):
-            lines.append(f"{_label(key)}")
-            for item in value:
-                if isinstance(item, dict):
-                    parts = []
-                    for ik, iv in item.items():
-                        parts.append(f"{_label(ik)} {_val(iv)}")
-                    lines.append(f"  {'  '.join(parts)}")
-                else:
-                    lines.append(f"  {_val(item)}")
-        else:
-            lines.append(_kv(key, value))
+    duck = data.get("duckdb", {})
+    if isinstance(duck, dict) and duck:
+        for sk, sv in duck.items():
+            if sk in _METRICS_HIGHLIGHT:
+                # ★ marker (pink), label (blue), value (limited green)
+                lines.append(f"  {PINK}★{RESET} {BLUE}{sk}:{RESET} {LGRN}{sv}{RESET}")
+            else:
+                lines.append(f"    {GRAY}{sk}: {sv}{RESET}")
+        lines.append("")
+        lines.append(f"  {GRAY}★ = key value to read aloud on camera{RESET}")
+    else:
+        # No duckdb block — fall back to showing all top-level fields dimmed.
+        for key, value in data.items():
+            if not isinstance(value, (dict, list)):
+                lines.append(f"    {GRAY}{key}: {value}{RESET}")
 
     return "\n".join(lines)
 
@@ -693,6 +703,33 @@ def fmt_raw(data: dict) -> str:
 # Dispatcher
 # ---------------------------------------------------------------------------
 
+def fmt_decisions(data: Any) -> str:
+    """Highlight the latest llm_decisions record (Step 3 proof point)."""
+    record = data[0] if isinstance(data, list) and data else data
+    if not isinstance(record, dict):
+        return fmt_raw(data)
+
+    lines: list[str] = []
+    lines.append(_heading("LLM Decision Record"))
+    lines.append("")
+
+    if record.get("request_id"):
+        lines.append(_hi("request_id", str(record["request_id"])))
+    if record.get("status"):
+        lines.append(_hi("status", str(record["status"])))
+
+    if record.get("endpoint"):
+        lines.append(_ctx("endpoint", str(record["endpoint"])))
+    p = record.get("prompt_tokens", 0)
+    c = record.get("completion_tokens", 0)
+    t = record.get("total_tokens", 0)
+    lines.append(_ctx("tokens", f"prompt={p} completion={c} total={t}"))
+
+    lines.append("")
+    lines.append(f"  {GRAY}★ = read aloud: request_id (matches Step 2) and status{RESET}")
+    return "\n".join(lines)
+
+
 FORMATTERS: dict[str, Any] = {
     "feedback": fmt_feedback,
     "dispute": fmt_dispute,
@@ -702,6 +739,7 @@ FORMATTERS: dict[str, Any] = {
     "validation": fmt_validation,
     "dashboard": fmt_dashboard,
     "audit": fmt_audit,
+    "decisions": fmt_decisions,
     "health": fmt_health,
     "metrics": fmt_metrics,
     "raw": fmt_raw,

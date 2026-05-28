@@ -47,10 +47,10 @@ To start from a clean state:
 **Goal**: Prove source data exists in the deterministic pipeline layer before any LLM processing
 
 ```bash
-curl -s http://localhost:8000/admin/metrics | python3 -m json.tool
+curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metrics
 ```
 
-**Expected output**: `raw_feedback: 10`, `trusted_enriched: 0`
+**Expected output**: `raw_feedback: 10`, `trusted_enriched: 0` (the key counts are marked with ★)
 
 **What the learner should notice**: 10 feedback records are in the raw table. The trusted enrichment table is empty — no LLM has touched this data yet.
 
@@ -61,7 +61,7 @@ curl -s http://localhost:8000/admin/metrics | python3 -m json.tool
 ```bash
 curl -s http://localhost:8000/enrich/feedback \
   -H "Content-Type: application/json" \
-  -d @data/payloads/feedback_enrich.json | python3 -m json.tool
+  -d @data/payloads/feedback_enrich.json | python3 scripts/fmt.py --type feedback
 ```
 
 **Expected output**:
@@ -79,7 +79,7 @@ curl -s http://localhost:8000/enrich/feedback \
 **Goal**: Prove the LLM decision entered the metadata store with full traceability
 
 ```bash
-curl -s http://localhost:8000/admin/llm-decisions?limit=1 | python3 -m json.tool
+curl -s http://localhost:8000/admin/llm-decisions?limit=1 | python3 scripts/fmt.py --type decisions
 ```
 
 **Expected output**: A decision record showing the same request_id from Step 2, endpoint=feedback, status=accepted, and token counts (prompt=18, completion=46, total=64)
@@ -91,10 +91,10 @@ curl -s http://localhost:8000/admin/llm-decisions?limit=1 | python3 -m json.tool
 **Goal**: Prove that validated LLM output reached the trusted analytical table
 
 ```bash
-curl -s http://localhost:8000/admin/metrics | python3 -m json.tool
+curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metrics
 ```
 
-**Expected output**: `raw_feedback: 10`, `trusted_enriched: 1`
+**Expected output**: `raw_feedback: 10`, `trusted_enriched: 1` (the count grew from 0 to 1)
 
 **What the learner should notice**: The trusted table grew from 0 to 1. The validated LLM output was promoted from a proposal to a trusted data product. If validation had failed, the record would have gone to quarantine instead.
 
