@@ -197,7 +197,7 @@ def fmt_feedback(data: dict) -> str:
     lines.append(_heading("Feedback Enrichment"))
     lines.append("")
 
-    # Highlighted props the author reads aloud
+    # Only the props the author reads aloud
     if data.get("category") is not None:
         lines.append(_hi("category", str(data["category"])))
     if data.get("confidence") is not None:
@@ -207,15 +207,6 @@ def fmt_feedback(data: dict) -> str:
         lines.append(_hi("source_doc_ids", docs))
     if data.get("validation_status") is not None:
         lines.append(_hi("validation_status", str(data["validation_status"])))
-
-    # Context props shown but not narrated
-    if data.get("request_id"):
-        lines.append(_ctx("request_id", str(data["request_id"])))
-    if data.get("summary") is not None:
-        lines.append(_ctx("summary", str(data["summary"])))
-
-    lines.append("")
-    lines.append(f"  {GRAY}★ = read aloud: category, confidence, sources, status{RESET}")
 
     return "\n".join(lines)
 
@@ -649,19 +640,14 @@ def fmt_metrics(data: dict) -> str:
 
     duck = data.get("duckdb", {})
     if isinstance(duck, dict) and duck:
-        for sk, sv in duck.items():
-            if sk in _METRICS_HIGHLIGHT:
-                # ★ marker (pink), label (blue), value (limited green)
-                lines.append(f"  {PINK}★{RESET} {BLUE}{sk}:{RESET} {LGRN}{sv}{RESET}")
-            else:
-                lines.append(f"    {GRAY}{sk}: {sv}{RESET}")
-        lines.append("")
-        lines.append(f"  {GRAY}★ = key value to read aloud on camera{RESET}")
+        # Only the warehouse counts the author reads aloud
+        for sk in ("raw_feedback", "trusted_enriched", "quarantine_outputs"):
+            if sk in duck:
+                lines.append(f"  {PINK}★{RESET} {BLUE}{sk}:{RESET} {LGRN}{duck[sk]}{RESET}")
     else:
-        # No duckdb block — fall back to showing all top-level fields dimmed.
         for key, value in data.items():
             if not isinstance(value, (dict, list)):
-                lines.append(f"    {GRAY}{key}: {value}{RESET}")
+                lines.append(f"  {PINK}★{RESET} {BLUE}{key}:{RESET} {LGRN}{value}{RESET}")
 
     return "\n".join(lines)
 
@@ -718,15 +704,6 @@ def fmt_decisions(data: Any) -> str:
     if record.get("status"):
         lines.append(_hi("status", str(record["status"])))
 
-    if record.get("endpoint"):
-        lines.append(_ctx("endpoint", str(record["endpoint"])))
-    p = record.get("prompt_tokens", 0)
-    c = record.get("completion_tokens", 0)
-    t = record.get("total_tokens", 0)
-    lines.append(_ctx("tokens", f"prompt={p} completion={c} total={t}"))
-
-    lines.append("")
-    lines.append(f"  {GRAY}★ = read aloud: request_id (matches Step 2) and status{RESET}")
     return "\n".join(lines)
 
 
