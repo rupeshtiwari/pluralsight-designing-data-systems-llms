@@ -59,6 +59,15 @@ show_command() {
   printf "\n  ${DIM}Command:${NC}\n"
   printf "  ${DIM}\$${NC} %s\n\n" "$1"
 }
+# highlight: a KEY property the author reads aloud on camera.
+# Label in Blue, value in Limited Green, marked with ★ so it stands out.
+highlight() {
+  printf "  ${PINK}★${NC} ${BLUE}%s${NC} ${LGREEN}%s${NC}\n" "$1" "$2"
+}
+# field: a supporting value shown for context but not narrated.
+field() {
+  printf "    ${GRAY}%s${NC} ${GRAY}%s${NC}\n" "$1" "$2"
+}
 
 # ── Log helpers ─────────────────────────────────────────────────────────────
 log() { echo "$1" >> "$LOG"; }
@@ -134,8 +143,10 @@ log ""
 RAW_COUNT=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['raw_feedback'])")
 TRUSTED_BEFORE=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['trusted_enriched'])")
 
-printf "  ${BLUE}raw.feedback:${NC}            %s\n" "$RAW_COUNT"
-printf "  ${BLUE}trusted.feedback_enriched:${NC} %s\n" "$TRUSTED_BEFORE"
+highlight "raw.feedback row count:" "$RAW_COUNT"
+field     "trusted.feedback_enriched:" "$TRUSTED_BEFORE  (empty baseline)"
+echo ""
+printf "  ${GRAY}★ = read this value aloud on camera${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
@@ -198,12 +209,14 @@ SOURCE_DOCS=$(echo "$RESPONSE" | python3 -c "import json,sys; print(', '.join(js
 VAL_STATUS=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['validation_status'])")
 SUMMARY=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['summary'])")
 
-printf "  ${BLUE}request_id:${NC}        %s\n" "$REQUEST_ID"
-printf "  ${BLUE}category:${NC}          %s\n" "$CATEGORY"
-printf "  ${BLUE}confidence:${NC}        %s\n" "$CONFIDENCE"
-printf "  ${BLUE}source_doc_ids:${NC}    %s\n" "$SOURCE_DOCS"
-printf "  ${BLUE}validation_status:${NC} %s\n" "$VAL_STATUS"
-printf "  ${BLUE}summary:${NC}           %s\n" "$SUMMARY"
+highlight "category:" "$CATEGORY"
+highlight "confidence:" "$CONFIDENCE"
+highlight "source_doc_ids:" "$SOURCE_DOCS"
+highlight "validation_status:" "$VAL_STATUS"
+field     "request_id:" "$REQUEST_ID"
+field     "summary:" "$SUMMARY"
+echo ""
+printf "  ${GRAY}★ = read these 4 values aloud: category, confidence, sources, status${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
@@ -293,10 +306,12 @@ DEC_STATUS=$(echo "$DECISIONS" | python3 -c "import json,sys; d=json.load(sys.st
 DEC_ENDPOINT=$(echo "$DECISIONS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0]['endpoint'] if d else 'MISSING')")
 DEC_TOKENS=$(echo "$DECISIONS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"prompt={d[0].get('prompt_tokens',0)} completion={d[0].get('completion_tokens',0)} total={d[0].get('total_tokens',0)}\") if d else print('MISSING')")
 
-printf "  ${BLUE}request_id:${NC} %s\n" "$DEC_REQ_ID"
-printf "  ${BLUE}endpoint:${NC}   %s\n" "$DEC_ENDPOINT"
-printf "  ${BLUE}status:${NC}     %s\n" "$DEC_STATUS"
-printf "  ${BLUE}tokens:${NC}     %s\n" "$DEC_TOKENS"
+highlight "request_id:" "$DEC_REQ_ID"
+highlight "status:" "$DEC_STATUS"
+field     "endpoint:" "$DEC_ENDPOINT"
+field     "tokens:" "$DEC_TOKENS"
+echo ""
+printf "  ${GRAY}★ = read aloud: request_id (matches Step 2) and status${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
@@ -358,9 +373,11 @@ log ""
 TRUSTED_AFTER=$(echo "$METRICS_AFTER" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['trusted_enriched'])")
 DELTA=$((TRUSTED_AFTER - TRUSTED_BEFORE))
 
-printf "  ${BLUE}trusted.enriched before:${NC} %s\n" "$TRUSTED_BEFORE"
-printf "  ${BLUE}trusted.enriched after:${NC}  %s\n" "$TRUSTED_AFTER"
-printf "  ${BLUE}row count delta:${NC}         ${GREEN}+%s${NC}\n" "$DELTA"
+field     "trusted.enriched before:" "$TRUSTED_BEFORE"
+field     "trusted.enriched after:" "$TRUSTED_AFTER"
+highlight "row count delta:" "+$DELTA"
+echo ""
+printf "  ${GRAY}★ = read aloud: the row count delta (0 → 1)${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
