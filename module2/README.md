@@ -40,7 +40,9 @@ This demo runs a LangGraph workflow for a failed NorthWind finance data quality 
 **Goal**: Visualize the agent workflow graph before executing it
 
 ```bash
-curl -s http://localhost:8000/agent/graph | python3 -m json.tool
+curl -s http://localhost:8000/agent/graph | python3 scripts/fmt.py --type raw \
+  --title "LangGraph agent workflow graph" \
+  --why "Explicit nodes the agent steps through, not hidden reasoning"
 ```
 
 **Expected output**: State diagram showing nodes: inspect_metadata, retrieve_runbook, classify_severity, recommend_action, approval_gate with conditional transitions.
@@ -54,7 +56,9 @@ curl -s http://localhost:8000/agent/graph | python3 -m json.tool
 ```bash
 curl -s http://localhost:8000/agent/triage \
   -H "Content-Type: application/json" \
-  -d @data/payloads/anomaly_triage.json | python3 -m json.tool
+  -d @data/payloads/anomaly_triage.json | python3 scripts/fmt.py --type triage \
+  --title "Agent triage decision" \
+  --why "Severity, root cause, and recommended action with an approval gate"
 ```
 
 **Expected output**:
@@ -72,7 +76,9 @@ curl -s http://localhost:8000/agent/triage \
 **Goal**: Prove every tool invocation is traceable in the metadata store
 
 ```bash
-curl -s http://localhost:8000/agent/state/INC-3001 | python3 -m json.tool
+curl -s http://localhost:8000/agent/state/INC-3001 | python3 scripts/fmt.py --type raw \
+  --title "Agent state and tool calls" \
+  --why "Every tool call recorded in order for traceability"
 ```
 
 **Expected output**: Agent state showing tool calls in order: inspect_metadata, retrieve_runbook, classify_severity, recommend_action, approval_gate — each with output data.
@@ -84,7 +90,9 @@ curl -s http://localhost:8000/agent/state/INC-3001 | python3 -m json.tool
 **Goal**: Prove the agent stopped at the approval gate instead of auto-executing
 
 ```bash
-curl -s http://localhost:8000/agent/decisions | python3 -m json.tool
+curl -s http://localhost:8000/agent/decisions | python3 scripts/fmt.py --type raw \
+  --title "Approval gate decision" \
+  --why "review_required is true — the agent advises but does not act"
 ```
 
 **Expected output**: Decision record showing incident_id=INC-3001, severity=high, recommended_action describing pipeline pause, review_required=true.

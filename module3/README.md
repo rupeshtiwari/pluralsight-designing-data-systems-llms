@@ -45,7 +45,9 @@ This demo triggers the NorthWind Airflow DAG from a new source batch and shows t
 ```bash
 curl -s -X POST http://localhost:8000/pipeline/trigger \
   -H "Content-Type: application/json" \
-  -d '{"batch_id": "BATCH-20240318-001", "source": "data/payloads/batch_feedback.json"}' | python3 -m json.tool
+  -d '{"batch_id": "BATCH-20240318-001", "source": "data/payloads/batch_feedback.json"}' | python3 scripts/fmt.py --type raw \
+  --title "Pipeline trigger confirmation" \
+  --why "Starts the DAG run and assigns a batch_id to track"
 ```
 
 **Expected output**: Pipeline trigger confirmation showing batch_id, dag_id, status=triggered.
@@ -57,7 +59,9 @@ curl -s -X POST http://localhost:8000/pipeline/trigger \
 **Goal**: Visualize the pipeline run with accepted and rejected counts
 
 ```bash
-curl -s http://localhost:8000/pipeline/runs | python3 -m json.tool
+curl -s http://localhost:8000/pipeline/runs | python3 scripts/fmt.py --type raw \
+  --title "Pipeline run results" \
+  --why "Accepted and rejected counts per run"
 ```
 
 **Expected output**: Pipeline run records showing batch_id, accepted_count, rejected_count, and status.
@@ -69,7 +73,9 @@ curl -s http://localhost:8000/pipeline/runs | python3 -m json.tool
 **Goal**: Prove that task logs capture the full chain from batch_id to request_id to validation result
 
 ```bash
-curl -s "http://localhost:8000/pipeline/run/BATCH-20240318-001" | python3 -m json.tool
+curl -s "http://localhost:8000/pipeline/run/BATCH-20240318-001" | python3 scripts/fmt.py --type batch \
+  --title "Batch enrichment details" \
+  --why "Per-item request_id, category, and validation status"
 ```
 
 **Expected output**: Batch result showing total=5, accepted=3, rejected=2, with per-item details including request_id, category, validation_status, and errors.
@@ -81,7 +87,9 @@ curl -s "http://localhost:8000/pipeline/run/BATCH-20240318-001" | python3 -m jso
 **Goal**: Prove accepted records reached trusted tables and rejected records went to quarantine with reasons
 
 ```bash
-curl -s http://localhost:8000/admin/metrics | python3 -m json.tool
+curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metrics \
+  --title "DuckDB trusted and quarantine counts" \
+  --why "Good records in trusted, bad records in quarantine" --highlight trusted_enriched,quarantine_outputs
 ```
 
 **Expected output**: trusted_enriched >= 3, quarantine_outputs >= 2.
