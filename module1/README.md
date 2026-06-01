@@ -1,4 +1,4 @@
-# Module 1 — Clip 4: Enriching e-commerce feedback with FastAPI, DuckDB, and pgvector
+# Module 1 — Clip 4: Demo: Enriching e-commerce feedback with FastAPI, DuckDB, and pgvector (6 minutes)
 
 ## Why this matters
 
@@ -45,6 +45,15 @@ To start from a clean state:
 ### Step 1: Show DuckDB raw feedback input (LO 1a)
 
 **Goal**: Prove source data exists in the deterministic pipeline layer before any LLM processing
+
+**Primary (DuckDB CLI — outline requirement)**: query the DuckDB file directly. Requires the FastAPI server to be stopped or run before `module1-demo-reset.sh` brings it up.
+
+```bash
+duckdb data/northwind.duckdb \
+  "SELECT count(*) AS raw_feedback FROM raw.feedback;"
+```
+
+**Portable alternative (when the server holds the DuckDB lock)**:
 
 ```bash
 curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metrics \
@@ -129,6 +138,19 @@ docker exec northwind-postgres psql -U northwind -d northwind -c \
 
 **Goal**: Prove that validated LLM output reached the trusted analytical table
 
+**Primary (DuckDB CLI — outline requirement)**: query the DuckDB trusted table directly to see the row count delta and the enriched record.
+
+```bash
+duckdb data/northwind.duckdb \
+  "SELECT count(*) AS trusted_enriched FROM trusted.feedback_enriched;"
+
+duckdb data/northwind.duckdb \
+  "SELECT request_id, category, confidence, validation_status \
+   FROM trusted.feedback_enriched ORDER BY enriched_at DESC LIMIT 3;"
+```
+
+**Portable alternative (when the server holds the DuckDB lock)**:
+
 ```bash
 curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metrics \
   --title "DuckDB warehouse row counts (after enrichment)" \
@@ -139,7 +161,9 @@ curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metr
 
 **What the learner should notice**: The trusted table grew from 0 to 1. The validated LLM output was promoted from a proposal to a trusted data product. If validation had failed, the record would have gone to quarantine instead.
 
-## Key takeaway
+## Best-practice callout
+
+**Trusted tables need validated generated fields.**
 
 LLM outputs are proposals until validation promotes them to trusted data.
 
