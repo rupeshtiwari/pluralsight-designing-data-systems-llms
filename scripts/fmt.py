@@ -243,10 +243,11 @@ def fmt_feedback(data: dict) -> str:
     lines: list[str] = []
     lines.extend(_maybe_heading("Feedback Enrichment"))
 
-    # Default starred fields for feedback; --highlight can override.
-    order = ["category", "confidence", "source_doc_ids", "validation_status",
-             "request_id", "summary"]
-    defaults = {"category", "confidence", "source_doc_ids", "validation_status"}
+    # Outline names these 5 fields explicitly as on-screen proof, plus the
+    # status which proves the contract. All 6 default to ★ highlighted.
+    order = ["request_id", "category", "summary", "confidence",
+             "source_doc_ids", "validation_status"]
+    defaults = set(order)
     for field in order:
         if data.get(field) is None:
             continue
@@ -762,6 +763,28 @@ def fmt_decisions(data: Any) -> str:
     t = record.get("total_tokens", 0)
     tok_val = f"prompt={p} completion={c} total={t}"
     lines.append(_hi("tokens", tok_val) if _should_star("tokens", False) else _ctx("tokens", tok_val))
+
+    # Validation checks (schema, grounding, confidence, source ID) — outline
+    # requires proving each one passes.
+    validation = record.get("validation") or {}
+    checks = validation.get("checks") if isinstance(validation, dict) else None
+    if isinstance(checks, dict) and checks:
+        # Map internal check names to the names the outline uses
+        outline_names = {
+            "required_fields": "schema",
+            "grounding": "grounding",
+            "confidence": "confidence",
+            "category": "source ID",
+        }
+        lines.append("")
+        lines.append(f"  {BLUE}validation checks:{RESET}")
+        for internal, display in outline_names.items():
+            info = checks.get(internal)
+            if not isinstance(info, dict):
+                continue
+            passed = bool(info.get("passed"))
+            mark = f"{LIME}✓ PASS{RESET}" if passed else f"{PINK}✗ FAIL{RESET}"
+            lines.append(f"  {PINK}★{RESET} {display:<12} {mark}")
 
     return "\n".join(lines)
 

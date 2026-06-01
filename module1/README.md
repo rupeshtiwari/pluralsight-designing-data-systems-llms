@@ -89,15 +89,15 @@ curl -s http://localhost:8000/enrich/feedback \
   --why "The LLM proposal: category, confidence, and cited sources"
 ```
 
-**Expected output**:
-- request_id: a UUID
-- category: product_quality
-- summary: describes the defective blender (cracked lid, grinding noise)
-- confidence: 0.8 (above the 0.75 threshold)
-- source_doc_ids: ["DOC-001", "DOC-002"]
-- validation_status: accepted
+**Expected output (all 5 fields the outline names are ★-highlighted)**:
+- ★ request_id: a UUID
+- ★ category: product_quality
+- ★ summary: describes the defective blender (cracked lid, grinding noise)
+- ★ confidence: 0.8 (above the 0.75 threshold)
+- ★ source_doc_ids: ["DOC-001", "DOC-002"]
+- ★ validation_status: accepted
 
-**What the learner should notice**: The service classified the feedback, grounded its answer in reference documents, and the validation status is accepted because all checks passed.
+**What the learner should notice**: The service emitted the JSON contract from Clip 2. The validation_status is accepted because every check passed — Step 3 shows the per-check breakdown.
 
 ### Step 3: Verify the decision was stored in llm_decisions (LO 1b, 1d)
 
@@ -109,7 +109,12 @@ curl -s http://localhost:8000/admin/llm-decisions?limit=1 | python3 scripts/fmt.
   --why "Same request_id as Step 2 proves end-to-end traceability"
 ```
 
-**Expected output**: A decision record showing the same request_id from Step 2, endpoint=feedback, status=accepted, and token counts (prompt=18, completion=46, total=64)
+**Expected output**: A decision record showing the same request_id from Step 2, status=accepted, and a **validation checks block** proving the four required checks passed:
+
+- ★ schema       ✓ PASS
+- ★ grounding    ✓ PASS
+- ★ confidence   ✓ PASS
+- ★ source ID    ✓ PASS
 
 **Direct psql proof** (when Postgres container is up):
 
