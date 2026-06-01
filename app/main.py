@@ -46,12 +46,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         duckdb_client.seed_refunds(str(seed_dir / "refunds.json"))
         duckdb_client.seed_merchant_transactions(str(seed_dir / "merchant_transactions.json"))
 
+    # Seed pgvector reference docs (real PG when reachable, memory otherwise)
+    try:
+        from app.db import pgvector
+        await pgvector.seed_from_file(str(seed_dir / "reference_docs.json"))
+    except Exception:
+        logger.warning("pgvector_seed_skipped")
+
     _metrics["startup_at"] = datetime.now(timezone.utc).isoformat()
     logger.info("startup_complete")
 
     yield
 
     duckdb_client.close_connection()
+    try:
+        from app.db import postgres
+        await postgres.close_pool()
+    except Exception:
+        pass
     logger.info("shutdown_complete")
 
 
@@ -85,9 +97,25 @@ async def reset_metrics() -> dict:
 
 @app.post("/admin/seed-knowledge-base")
 async def seed_knowledge_base() -> dict:
-    from app.db import pgvector
-    count = pgvector.seed_from_file(str(BASE_DIR / "data" / "seed" / "reference_docs.json"))
-    return {"status": "seeded", "documents": count}
+    from app.db import pgvector, postgres
+    count = await pgvector.seed_from_file(str(BASE_DIR / "data" / "seed" / "reference_docs.json"))
+    return {
+        "status": "seeded",
+        "documents": count,
+        "backend": "postgres" if postgres.is_postgres_available() else "memory",
+    }
+
+
+@app.get("/admin/reference-docs")
+async def list_reference_docs(limit: int = 20) -> dict:
+    """List the pgvector-seeded reference documents (Module 1 proof point)."""
+    from app.db import pgvector, postgres
+    docs = await pgvector.list_reference_docs(limit=limit)
+    return {
+        "backend": "postgres" if postgres.is_postgres_available() else "memory",
+        "count": len(docs),
+        "documents": docs,
+    }
 
 
 @app.get("/admin/llm-decisions")
@@ -98,6 +126,7 @@ async def list_llm_decisions(limit: int = 10) -> list:
 
 @app.get("/admin/metrics")
 async def get_metrics() -> dict:
+    from app.db import postgres
     duckdb_counts = {}
     try:
         duckdb_counts = {
@@ -112,4 +141,8 @@ async def get_metrics() -> dict:
     return {
         **_metrics,
         "duckdb": duckdb_counts,
+        "postgres": {
+            "available": postgres.is_postgres_available(),
+            "url": postgres.POSTGRES_URL.split("@")[-1],
+        },
     }

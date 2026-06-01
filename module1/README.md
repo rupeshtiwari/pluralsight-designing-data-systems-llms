@@ -56,6 +56,27 @@ curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metr
 
 **What the learner should notice**: 10 feedback records are in the raw table. The trusted enrichment table is empty — no LLM has touched this data yet.
 
+### Step 1b: Show the pgvector reference documents (LO 1a, 1b)
+
+**Goal**: Prove the LLM is grounded in approved product and policy documents stored in PostgreSQL with pgvector
+
+```bash
+curl -s "http://localhost:8000/admin/reference-docs?limit=8" | python3 scripts/fmt.py --type raw \
+  --title "pgvector reference documents" \
+  --why "Approved policies the LLM is grounded against, stored in Postgres with vector(384) embeddings"
+```
+
+**Expected output**: 8 documents with doc_id (DOC-001 through DOC-008), title, doc_type, and `has_embedding: true` when Postgres is running.
+
+**Direct psql proof** (when Postgres container is up):
+
+```bash
+docker exec northwind-postgres psql -U northwind -d northwind -c \
+  "SELECT doc_id, doc_type, embedding IS NOT NULL AS has_embedding FROM reference_docs ORDER BY doc_id;"
+```
+
+**What the learner should notice**: Each reference document carries a 384-dimension vector embedding in pgvector. These are the documents the LLM cites in `source_doc_ids`.
+
 ### Step 2: Enrich a single feedback record through FastAPI (LO 1a, 1b)
 
 **Goal**: Show the LLM enrichment boundary — deterministic input goes in, structured validated output comes back
@@ -90,7 +111,14 @@ curl -s http://localhost:8000/admin/llm-decisions?limit=1 | python3 scripts/fmt.
 
 **Expected output**: A decision record showing the same request_id from Step 2, endpoint=feedback, status=accepted, and token counts (prompt=18, completion=46, total=64)
 
-**What the learner should notice**: The request_id matches Step 2, proving end-to-end traceability from enrichment call to decision record. Every LLM call creates a traceable record.
+**Direct psql proof** (when Postgres container is up):
+
+```bash
+docker exec northwind-postgres psql -U northwind -d northwind -c \
+  "SELECT request_id, endpoint, status, total_tokens FROM llm_decisions ORDER BY created_at DESC LIMIT 1;"
+```
+
+**What the learner should notice**: The request_id matches Step 2, proving end-to-end traceability from enrichment call to decision record. The row lives in real Postgres — every LLM call creates a durable, queryable record.
 
 ### Step 4: Verify trusted output table received the enriched record (LO 1d)
 
