@@ -25,8 +25,9 @@ This demo runs the NorthWind feedback enrichment flow from DuckDB source records
 | Proof point | Step | LO |
 |-------------|------|----|
 | DuckDB raw.feedback has input records ready for enrichment | Step 1 | 1a |
+| pgvector reference documents (Postgres + 384-dim embeddings) ground the LLM | Step 1b | 1a, 1b |
 | FastAPI returns structured enrichment with request_id, category, summary, confidence, and source_doc_ids | Step 2 | 1a, 1b |
-| llm_decisions table records the same request_id and validation status | Step 3 | 1b, 1d |
+| llm_decisions table records the same request_id and validation status (schema, grounding, confidence, source ID checks) | Step 3 | 1b, 1d |
 | DuckDB trusted.feedback_enriched row count increases after validated enrichment | Step 4 | 1d |
 
 ## Prerequisites
@@ -46,19 +47,19 @@ To start from a clean state:
 
 **Goal**: Prove source data exists in the deterministic pipeline layer before any LLM processing
 
-**Primary (DuckDB CLI — outline requirement)**: query the DuckDB file directly. Requires the FastAPI server to be stopped or run before `module1-demo-reset.sh` brings it up.
-
-```bash
-duckdb data/northwind.duckdb \
-  "SELECT count(*) AS raw_feedback FROM raw.feedback;"
-```
-
-**Portable alternative (when the server holds the DuckDB lock)**:
+The FastAPI server holds an exclusive lock on the DuckDB file while it runs, so the row counts are read through the `/admin/metrics` endpoint that wraps the same DuckDB query.
 
 ```bash
 curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metrics \
   --title "DuckDB warehouse row counts (before enrichment)" \
   --why "Source data is ready; the trusted table is still empty"
+```
+
+**Equivalent direct DuckDB CLI query** (works only when the server is stopped, e.g. before `module1-demo-reset.sh` brings it up):
+
+```bash
+duckdb data/northwind.duckdb \
+  "SELECT count(*) AS raw_feedback FROM raw.feedback;"
 ```
 
 **Expected output**: `raw_feedback: 10`, `trusted_enriched: 0` (the key counts are marked with ★)
@@ -138,7 +139,15 @@ docker exec northwind-postgres psql -U northwind -d northwind -c \
 
 **Goal**: Prove that validated LLM output reached the trusted analytical table
 
-**Primary (DuckDB CLI — outline requirement)**: query the DuckDB trusted table directly to see the row count delta and the enriched record.
+The FastAPI server holds the DuckDB lock during the demo, so the trusted-table row count is read through the same `/admin/metrics` endpoint as Step 1. The count growing from 0 to 1 is the proof that validation promoted the LLM output.
+
+```bash
+curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metrics \
+  --title "DuckDB warehouse row counts (after enrichment)" \
+  --why "The validated output was promoted to the trusted table"
+```
+
+**Equivalent direct DuckDB CLI queries** (work only when the server is stopped):
 
 ```bash
 duckdb data/northwind.duckdb \
@@ -147,14 +156,6 @@ duckdb data/northwind.duckdb \
 duckdb data/northwind.duckdb \
   "SELECT request_id, category, confidence, validation_status \
    FROM trusted.feedback_enriched ORDER BY enriched_at DESC LIMIT 3;"
-```
-
-**Portable alternative (when the server holds the DuckDB lock)**:
-
-```bash
-curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metrics \
-  --title "DuckDB warehouse row counts (after enrichment)" \
-  --why "The validated output was promoted to the trusted table"
 ```
 
 **Expected output**: `raw_feedback: 10`, `trusted_enriched: 1` (the count grew from 0 to 1)
