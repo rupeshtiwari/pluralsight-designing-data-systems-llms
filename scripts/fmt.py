@@ -58,21 +58,40 @@ def _panel(title: str, why: str) -> str:
     """A bordered header explaining what this output shows and why.
 
     Title in White bold, the 'why' line in Blue, inside a box so it reads
-    like a table header on camera.
+    like a table header on camera. Long text wraps onto extra lines — never
+    truncated (per course rule: keep full content).
     """
-    width = 64
+    width = 72
+    inner = width - 4
     top = "┌" + "─" * (width - 2) + "┐"
     bot = "└" + "─" * (width - 2) + "┘"
 
-    def row(text: str, color: str) -> str:
-        # Pad/truncate to fit inside the box borders.
-        inner = width - 4
-        t = text if len(text) <= inner else text[: inner - 1] + "…"
-        return f"│ {color}{t}{RESET}{' ' * (inner - len(t))} │"
+    def wrap(text: str) -> list[str]:
+        # Word-wrap to fit inside the box; preserve every character.
+        words = text.split()
+        out: list[str] = []
+        cur = ""
+        for w in words:
+            if not cur:
+                cur = w
+            elif len(cur) + 1 + len(w) <= inner:
+                cur = f"{cur} {w}"
+            else:
+                out.append(cur)
+                cur = w
+        if cur:
+            out.append(cur)
+        return out or [""]
 
-    lines = [top, row(title, WHITE)]
+    def row(text: str, color: str) -> str:
+        return f"│ {color}{text}{RESET}{' ' * (inner - len(text))} │"
+
+    lines = [top]
+    for line in wrap(title):
+        lines.append(row(line, WHITE))
     if why:
-        lines.append(row(why, BLUE))
+        for line in wrap(why):
+            lines.append(row(line, BLUE))
     lines.append(bot)
     return "\n".join(lines)
 
@@ -734,6 +753,34 @@ def fmt_raw(data: dict) -> str:
     return "\n".join(lines)
 
 
+def fmt_refdocs(data: dict) -> str:
+    """Compact one-screen view of pgvector reference docs (Module 1 Step 1b).
+
+    Shows: backend, count, all-embedded summary, then one row per doc with
+    the two fields the narration reads aloud — doc_id and title.
+    """
+    lines: list[str] = []
+    lines.extend(_maybe_heading("pgvector reference documents"))
+
+    backend = data.get("backend", "?")
+    docs = data.get("documents", []) or []
+    count = data.get("count", len(docs))
+    all_embedded = bool(docs) and all(d.get("has_embedding") for d in docs)
+
+    lines.append(_hi("backend", backend))
+    lines.append(_hi("count", str(count)))
+    embed_val = "true (all 384-dim)" if all_embedded else "MISSING"
+    lines.append(_hi("all_embedded", embed_val))
+    lines.append("")
+    lines.append(f"  {BLUE}documents (doc_id → title):{RESET}")
+    for d in docs:
+        doc_id = str(d.get("doc_id", "?"))
+        title = str(d.get("title", ""))
+        lines.append(f"  {PINK}★{RESET} {LGRN}{doc_id}{RESET}  {title}")
+
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
@@ -802,6 +849,7 @@ FORMATTERS: dict[str, Any] = {
     "health": fmt_health,
     "metrics": fmt_metrics,
     "raw": fmt_raw,
+    "refdocs": fmt_refdocs,
 }
 
 

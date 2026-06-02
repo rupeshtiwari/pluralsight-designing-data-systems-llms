@@ -70,7 +70,7 @@ curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metr
 **Goal**: Prove the LLM is grounded in approved product and policy documents stored in PostgreSQL with pgvector
 
 ```bash
-curl -s "http://localhost:8000/admin/reference-docs?limit=8" | python3 scripts/fmt.py --type raw \
+curl -s "http://localhost:8000/admin/reference-docs?limit=8" | python3 scripts/fmt.py --type refdocs \
   --title "pgvector reference documents" \
   --why "Approved policies the LLM is grounded against, stored in Postgres with vector(384) embeddings"
 ```
