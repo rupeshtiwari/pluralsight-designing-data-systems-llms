@@ -1,0 +1,32 @@
+[
+  {
+    "incident_id": "INC-2024-FIN-001",
+    "metric_name": "merchant_revenue_total",
+    "expected_value": 1250000.00,
+    "actual_value": 875000.00,
+    "system": "finance_pipeline",
+    "first_seen": "2024-10-15T08:22:00Z",
+    "affected_tables": ["merchant_transactions"],
+    "context": {"region": "NA", "merchant_count": 142}
+  },
+  {
+    "incident_id": "INC-2024-FIN-002",
+    "metric_name": "refund_rate_pct",
+    "expected_value": 3.5,
+    "actual_value": 12.8,
+    "system": "finance_pipeline",
+    "first_seen": "2024-10-16T14:05:00Z",
+    "affected_tables": ["refunds"],
+    "context": {"category": "electronics"}
+  },
+  {
+    "incident_id": "INC-2024-FIN-003",
+    "metric_name": "settlement_lag_hours",
+    "expected_value": 2.0,
+    "actual_value": 2.1,
+    "system": "finance_pipeline",
+    "first_seen": "2024-10-17T09:18:00Z",
+    "affected_tables": ["merchant_transactions"],
+    "context": {"low_severity_test": true}
+  }
+]

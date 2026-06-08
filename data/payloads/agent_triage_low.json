@@ -1,0 +1,7 @@
+{
+  "incident_id": "INC-2024-FIN-003",
+  "metric_name": "settlement_lag_hours",
+  "expected_value": 2.0,
+  "actual_value": 2.1,
+  "context": {"low_severity_test": true}
+}

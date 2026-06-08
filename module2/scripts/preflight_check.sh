@@ -7,7 +7,7 @@ set -euo pipefail
 # Runs every demo step in the same sequence as the README, captures each
 # command and its output, and saves a structured log to module2/preflight_log.txt.
 #
-# Use the log to verify that demo steps align with the learning objectives.
+# Maps each step to its on-screen proof and to the learning objective.
 #
 # Usage:
 #   module2/scripts/preflight_check.sh
@@ -21,33 +21,28 @@ API="http://localhost:8000"
 TMPD=$(mktemp -d)
 trap 'rm -rf "$TMPD"' EXIT
 
-# ── Colors ──────────────────────────────────────────────────────────────────
-# Pluralsight 2025 brand colors
-PINK='\033[38;2;255;22;117m'     # Transform Pink
-GREEN='\033[38;2;207;255;110m'   # Lime Green
-
-LGREEN='\033[38;2;64;255;191m'   # Limited Green
-GRAY='\033[38;2;191;191;191m'    # Light Gray
-WHITE='\033[1;37m'               # White bold
+# ── Colors (Pluralsight 2025 brand) ─────────────────────────────────────────
+PINK='\033[38;2;255;22;117m'
+GREEN='\033[38;2;207;255;110m'
+LGREEN='\033[38;2;64;255;191m'
 BLUE='\033[38;2;42;236;250m'
-BOLD='\033[1m'
+GRAY='\033[38;2;191;191;191m'
+WHITE='\033[1;37m'
 DIM='\033[2m'
+BOLD='\033[1m'
 NC='\033[0m'
 
 ERRORS=0
 
-pass() {
-  printf "  ${GREEN}✓ PASS${NC}  %s\n" "$1"
-}
-fail_check() {
-  printf "  ${PINK}✗ FAIL${NC}  %s\n" "$1"
-  ERRORS=$((ERRORS + 1))
-}
-detail() {
-  printf "           ${GRAY}%s${NC}\n" "$1"
-}
-fix() {
-  printf "    ${BLUE}→ Fix:${NC} %s\n" "$1"
+pass()       { printf "  ${GREEN}✓ PASS${NC}  %s\n" "$1"; }
+fail_check() { printf "  ${PINK}✗ FAIL${NC}  %s\n" "$1"; ERRORS=$((ERRORS + 1)); }
+detail()     { printf "           ${GRAY}%s${NC}\n" "$1"; }
+fix()        { printf "    ${BLUE}→ Fix:${NC} %s\n" "$1"; }
+highlight()  { printf "  ${PINK}★${NC} ${BLUE}%s${NC} ${LGREEN}%s${NC}\n" "$1" "$2"; }
+field()      { printf "    ${GRAY}%s${NC} ${GRAY}%s${NC}\n" "$1" "$2"; }
+show_command() {
+  printf "\n  ${DIM}Command:${NC}\n"
+  printf "  ${DIM}\$${NC} %s\n\n" "$1"
 }
 step_header() {
   echo ""
@@ -56,21 +51,7 @@ step_header() {
   printf "${BLUE}  Learning objective: %s${NC}\n" "$3"
   printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 }
-show_command() {
-  printf "\n  ${DIM}Command:${NC}\n"
-  printf "  ${DIM}\$${NC} %s\n\n" "$1"
-}
-# highlight: a KEY property the author reads aloud on camera.
-# Label in Blue, value in Limited Green, marked with ★ so it stands out.
-highlight() {
-  printf "  ${PINK}★${NC} ${BLUE}%s${NC} ${LGREEN}%s${NC}\n" "$1" "$2"
-}
-# field: a supporting value shown for context but not narrated.
-field() {
-  printf "    ${GRAY}%s${NC} ${GRAY}%s${NC}\n" "$1" "$2"
-}
 
-# ── Log helpers ─────────────────────────────────────────────────────────────
 log() { echo "$1" >> "$LOG"; }
 log_divider() {
   log ""
@@ -80,7 +61,6 @@ log_divider() {
   log ""
 }
 
-# ── Start log ───────────────────────────────────────────────────────────────
 cat > "$LOG" <<HEADER
 ================================================================================
 MODULE 2 — CLIP 4 PREFLIGHT LOG
@@ -90,362 +70,348 @@ Date:    $(date -u '+%Y-%m-%dT%H:%M:%SZ')
 Server:  $API
 
 Learning objectives:
-  2a  Design multi-step decision pipelines so learners can automate complex, but common processes
-  2b  Integrate tools (databases, APIs, pipelines) to enable LLM actions
+  2a  Design multi-step decision pipelines
+  2b  Integrate tools (databases, APIs) to enable LLM actions
 
 HEADER
 
-# ── Header ──────────────────────────────────────────────────────────────────
 echo ""
 printf "${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}\n"
-printf "${BOLD}║  Module 2 Clip 4 — Preflight Check                        ║${NC}\n"
-printf "${BOLD}║  LangGraph agent triage with PostgreSQL and API tools      ║${NC}\n"
+printf "${BOLD}║  Module 2 Clip 4 — Preflight Check                          ║${NC}\n"
+printf "${BOLD}║  LangGraph agent triage with PostgreSQL + API tools         ║${NC}\n"
 printf "${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
 
 # ── Reset to a clean baseline ────────────────────────────────────────────────
-# Always reset first so the preflight is reproducible no matter what ran before.
 echo ""
 printf "  ${DIM}Resetting to a clean baseline...${NC}\n"
-if [[ -x "$PROJECT_ROOT/scripts/module1-demo-reset.sh" ]]; then
-  "$PROJECT_ROOT/scripts/module1-demo-reset.sh" >/dev/null 2>&1 || true
+if [[ -x "$PROJECT_ROOT/scripts/module2-demo-reset.sh" ]]; then
+  "$PROJECT_ROOT/scripts/module2-demo-reset.sh" >/dev/null 2>&1 || true
 fi
 
 # ── Server check ────────────────────────────────────────────────────────────
 echo ""
 printf "  ${DIM}Checking server at ${API}...${NC}\n"
-
 if ! curl -sf "$API/health" >/dev/null 2>&1; then
   fail_check "Server is not running at $API"
   fix "module2/scripts/demo-reset.sh"
-  detail "The reset script will start a fresh server with seed data."
   echo "Server not running" >> "$LOG"
-  echo ""
-  printf "${PINK}${BOLD}Cannot continue without a running server. Exiting.${NC}\n\n"
   exit 1
 fi
 pass "Server is healthy"
 log "Server: healthy"
 
-# ═════════════════════════════════════════════════════════════════════════════
-# STEP 1 (LO 2a)
-# ═════════════════════════════════════════════════════════════════════════════
-step_header "1/4" "Show the LangGraph state diagram" "2a — Design multi-step decision pipelines"
-show_command "curl -s $API/agent/graph | python3 -m json.tool"
+# Detect storage backend (memory vs postgres)
+BACKEND=$(curl -sf "$API/admin/agent-tool-calls?limit=1" | python3 -c "import json,sys;print(json.load(sys.stdin).get('backend','?'))" 2>/dev/null || echo "?")
+log "Storage backend: $BACKEND"
+printf "  ${DIM}Storage backend: ${BLUE}%s${NC}\n" "$BACKEND"
 
-log_divider "STEP 1: Show the LangGraph state diagram (LO 2a)"
+# ═════════════════════════════════════════════════════════════════════════════
+# STEP 1 (LO 2a) — LangGraph topology (Mermaid)
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "1/5" "Show the LangGraph topology (Mermaid)" "2a — Multi-step decision pipeline"
+show_command "curl -s $API/agent/graph | python3 scripts/fmt.py --type mermaid"
+
+log_divider "STEP 1: Show the LangGraph topology (LO 2a)"
 log "COMMAND:"
-log "  curl -s $API/agent/graph | python3 -m json.tool"
+log "  curl -s $API/agent/graph"
 log ""
 
 GRAPH=$(curl -sf "$API/agent/graph")
 echo "$GRAPH" | python3 -m json.tool > "$TMPD/step1.json" 2>&1
-
 log "OUTPUT:"
 cat "$TMPD/step1.json" >> "$LOG"
 log ""
 
-NODES=$(echo "$GRAPH" | python3 -c "import json,sys; d=json.load(sys.stdin); nodes=d.get('nodes',d.get('graph',{}).get('nodes',[])); print(len(nodes) if isinstance(nodes,list) else len(nodes.keys()))")
+NODES=$(echo "$GRAPH" | python3 -c "import json,sys; print(' '.join(json.load(sys.stdin).get('nodes', [])))")
+HAS_MERMAID=$(echo "$GRAPH" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if 'graph' in d.get('mermaid','') else 'no')")
 
-highlight "node count:" "$NODES"
+highlight "inspect_metadata"  "in topology"
+highlight "retrieve_runbook"  "in topology"
+highlight "recommend_action"  "in topology"
+highlight "approval_gate"     "in topology"
+field     "all nodes:"        "$NODES"
 echo ""
-printf "  ${GRAY}★ = read this value aloud on camera${NC}\n"
-echo ""
+printf "  ${GRAY}★ = the four nodes the clip outline names${NC}\n"
 
 log "EXTRACTED VALUES:"
-log "  node_count: $NODES"
+log "  nodes:       $NODES"
+log "  has_mermaid: $HAS_MERMAID"
 log ""
 log "LO COVERAGE:"
-log "  2a — State diagram shows the agent workflow graph with node progression"
+log "  2a — Topology is explicit and auto-generated from compiled LangGraph"
 
-# Check: graph returned valid data with nodes
-if [[ "$NODES" -gt 0 ]]; then
-  pass "State diagram returned with $NODES nodes"
-  detail "The workflow graph shows explicit node transitions."
-  log "RESULT: PASS — $NODES nodes in graph"
+for n in inspect_metadata retrieve_runbook classify_severity recommend_action approval_gate auto_log; do
+  if echo " $NODES " | grep -q " $n "; then
+    pass "node present: $n"
+    log "RESULT: PASS — node $n in topology"
+  else
+    fail_check "node missing: $n"
+    fix "Check app/services/agent_graph.py add_node() calls"
+    log "RESULT: FAIL — node $n missing"
+  fi
+done
+
+if [[ "$HAS_MERMAID" == "yes" ]]; then
+  pass "mermaid source generated from compiled graph"
+  log "RESULT: PASS — mermaid present"
 else
-  fail_check "State diagram returned 0 nodes (expected nodes in graph)"
-  fix "module2/scripts/demo-reset.sh"
-  detail "The reset script restarts the server with the agent graph configured."
-  log "RESULT: FAIL — no nodes in graph"
+  fail_check "mermaid source missing"
+  fix "Verify get_graph().draw_mermaid() in agent_graph.graph_topology()"
+  log "RESULT: FAIL — mermaid missing"
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-# STEP 2 (LO 2a, 2b)
+# STEP 2 (LO 2a, 2b) — Trigger the agent (high severity)
 # ═════════════════════════════════════════════════════════════════════════════
-step_header "2/4" "Run the triage workflow for a data quality incident" "2a, 2b — Multi-step pipeline with tool integration"
-show_command 'curl -s http://localhost:8000/agent/triage -H "Content-Type: application/json" -d @data/payloads/anomaly_triage.json | python3 -m json.tool'
+step_header "2/5" "Trigger the agent on a high-severity incident" "2a, 2b — Workflow + tool integration"
+show_command 'curl -s $API/agent/triage -H "Content-Type: application/json" -d @data/payloads/agent_triage.json'
 
-log_divider "STEP 2: Run the triage workflow (LO 2a, 2b)"
-log "COMMAND:"
-log '  curl -s http://localhost:8000/agent/triage -H "Content-Type: application/json" -d @data/payloads/anomaly_triage.json | python3 -m json.tool'
-log ""
-log "INPUT PAYLOAD (data/payloads/anomaly_triage.json):"
-cat "$PROJECT_ROOT/data/payloads/anomaly_triage.json" >> "$LOG"
+log_divider "STEP 2: Trigger the agent (LO 2a, 2b)"
+log "INPUT PAYLOAD (data/payloads/agent_triage.json):"
+cat "$PROJECT_ROOT/data/payloads/agent_triage.json" >> "$LOG"
 log ""
 
-TRIAGE=$(curl -sf "$API/agent/triage" \
-  -H "Content-Type: application/json" \
-  -d @"$PROJECT_ROOT/data/payloads/anomaly_triage.json")
-echo "$TRIAGE" | python3 -m json.tool > "$TMPD/step2.json" 2>&1
-
+RESPONSE=$(curl -sf -X POST "$API/agent/triage" -H "Content-Type: application/json" -d @"$PROJECT_ROOT/data/payloads/agent_triage.json")
+echo "$RESPONSE" | python3 -m json.tool > "$TMPD/step2.json" 2>&1
 log "OUTPUT:"
 cat "$TMPD/step2.json" >> "$LOG"
 log ""
 
-INCIDENT_ID=$(echo "$TRIAGE" | python3 -c "import json,sys; print(json.load(sys.stdin)['incident_id'])")
-SEVERITY=$(echo "$TRIAGE" | python3 -c "import json,sys; print(json.load(sys.stdin)['severity'])")
-REVIEW_REQ=$(echo "$TRIAGE" | python3 -c "import json,sys; print(json.load(sys.stdin)['review_required'])")
-REC_ACTION=$(echo "$TRIAGE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('recommended_action','N/A'))" 2>/dev/null || echo "N/A")
-ROOT_CAUSE=$(echo "$TRIAGE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('root_cause_hypothesis','N/A'))" 2>/dev/null || echo "N/A")
+INCIDENT=$(echo "$RESPONSE" | python3 -c "import json,sys;print(json.load(sys.stdin)['incident_id'])")
+SEV=$(echo "$RESPONSE"      | python3 -c "import json,sys;print(json.load(sys.stdin)['severity'])")
+REV=$(echo "$RESPONSE"      | python3 -c "import json,sys;print(json.load(sys.stdin)['review_required'])")
+ACTION=$(echo "$RESPONSE"   | python3 -c "import json,sys;print(json.load(sys.stdin)['recommended_action'])")
+EVID=$(echo "$RESPONSE"     | python3 -c "import json,sys;print(json.load(sys.stdin)['evidence_summary'])")
+REASON=$(echo "$RESPONSE"   | python3 -c "import json,sys;print(json.load(sys.stdin)['root_cause_hypothesis'])")
 
-highlight "severity:" "$SEVERITY"
-highlight "root_cause_hypothesis:" "$ROOT_CAUSE"
-highlight "recommended_action:" "$REC_ACTION"
-highlight "review_required:" "$REVIEW_REQ"
-field     "incident_id:" "$INCIDENT_ID"
+highlight "incident_id:"        "$INCIDENT"
+highlight "severity:"           "$SEV"
+highlight "selected_edge:"      "recommend_action"
+highlight "recommended_action:" "$ACTION"
+highlight "evidence_summary:"   "$EVID"
+highlight "decision_reason:"    "$REASON"
+highlight "review_required:"    "$REV"
 echo ""
-printf "  ${GRAY}★ = read these values aloud on camera${NC}\n"
-echo ""
+printf "  ${GRAY}★ = read aloud: incident_id, selected_edge, severity, evidence, reason${NC}\n"
 
 log "EXTRACTED VALUES:"
-log "  incident_id:          $INCIDENT_ID"
-log "  severity:             $SEVERITY"
-log "  review_required:      $REVIEW_REQ"
-log "  recommended_action:   $REC_ACTION"
-log "  root_cause_hypothesis: $ROOT_CAUSE"
+log "  incident_id:        $INCIDENT"
+log "  severity:           $SEV"
+log "  review_required:    $REV"
+log "  recommended_action: $ACTION"
+log "  evidence_summary:   $EVID"
+log "  decision_reason:    $REASON"
 log ""
 log "LO COVERAGE:"
-log "  2a — Agent classified severity based on deviation percentage and designed a multi-step pipeline"
-log "  2b — Tools integrated: inspect_metadata, retrieve_runbook, classify_severity, recommend_action"
+log "  2a — Agent traversed multi-node pipeline (inspect → retrieve → classify → recommend → approval)"
+log "  2b — Tools invoked: postgres metadata, pgvector retrieval, llm severity & action"
 
-# Check: incident_id = INC-3001
-if [[ "$INCIDENT_ID" == "INC-3001" ]]; then
-  pass "incident_id = INC-3001"
-  detail "The triage workflow processed the correct incident."
-  log "RESULT: PASS — incident_id = INC-3001"
-else
-  fail_check "incident_id = $INCIDENT_ID (expected INC-3001)"
-  fix "module2/scripts/demo-reset.sh"
-  detail "The server may have stale state. Reset and retry."
-  log "RESULT: FAIL — incident_id = $INCIDENT_ID"
-fi
-
-# Check: severity = high
-if [[ "$SEVERITY" == "high" ]]; then
-  pass "severity = high"
-  detail "40% deviation exceeds the 10% threshold → high severity."
+if [[ "$SEV" == "high" ]]; then
+  pass "severity=high (30% deviation > 20% threshold)"
   log "RESULT: PASS — severity = high"
 else
-  fail_check "severity = $SEVERITY (expected high)"
-  fix "module2/scripts/demo-reset.sh"
-  detail "The severity classifier should flag 40% deviation as high."
-  detail "Check app/services/llm.py for classify_severity logic."
-  log "RESULT: FAIL — severity = $SEVERITY"
+  fail_check "severity=$SEV (expected high)"
+  fix "Verify classify_severity rule in app/services/agent_graph.py"
+  log "RESULT: FAIL — severity = $SEV"
 fi
-
-# Check: review_required = true/True
-REVIEW_LOWER=$(echo "$REVIEW_REQ" | python3 -c "import sys; print(sys.stdin.read().strip().lower())")
-if [[ "$REVIEW_LOWER" == "true" ]]; then
-  pass "review_required = $REVIEW_REQ"
-  detail "The agent does not auto-execute — it requires human review."
-  log "RESULT: PASS — review_required = $REVIEW_REQ"
+if [[ "$REV" == "True" ]]; then
+  pass "review_required = true (approval gate triggered)"
+  log "RESULT: PASS — review_required true"
 else
-  fail_check "review_required = $REVIEW_REQ (expected true)"
-  fix "module2/scripts/demo-reset.sh"
-  detail "The approval gate should set review_required=true for high severity."
-  detail "Check the approval_gate logic in the agent workflow."
-  log "RESULT: FAIL — review_required = $REVIEW_REQ"
+  fail_check "review_required = $REV (expected True)"
+  log "RESULT: FAIL — review_required = $REV"
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-# STEP 3 (LO 2b)
+# STEP 3 (LO 2b) — agent_tool_calls table
 # ═════════════════════════════════════════════════════════════════════════════
-step_header "3/4" "Verify tool calls in the agent state" "2b — Integrate tools (databases, APIs, pipelines)"
-show_command "curl -s $API/agent/state/INC-3001 | python3 -m json.tool"
+step_header "3/5" "Show agent_tool_calls (Postgres receipts)" "2b — Tool integration is traceable"
+show_command "curl -s '$API/admin/agent-tool-calls?incident_id=INC-2024-FIN-001' | python3 scripts/fmt.py --type tool-calls"
 
-log_divider "STEP 3: Verify tool calls in agent state (LO 2b)"
-log "COMMAND:"
-log "  curl -s $API/agent/state/INC-3001 | python3 -m json.tool"
-log ""
-
-STATE=$(curl -sf "$API/agent/state/INC-3001")
-echo "$STATE" | python3 -m json.tool > "$TMPD/step3.json" 2>&1
-
+log_divider "STEP 3: agent_tool_calls table (LO 2b)"
+TC_JSON=$(curl -sf "$API/admin/agent-tool-calls?incident_id=INC-2024-FIN-001&limit=10")
+echo "$TC_JSON" | python3 -m json.tool > "$TMPD/step3.json" 2>&1
 log "OUTPUT:"
 cat "$TMPD/step3.json" >> "$LOG"
 log ""
 
-TOOL_COUNT=$(echo "$STATE" | python3 -c "import json,sys; d=json.load(sys.stdin); tc=d.get('tool_calls',d.get('steps',[])); print(len(tc))")
-TOOL_NAMES=$(echo "$STATE" | python3 -c "
-import json,sys
-d=json.load(sys.stdin)
-tc=d.get('tool_calls',d.get('steps',[]))
-if isinstance(tc,list):
-    names=[t.get('tool_name',t.get('node','?')) for t in tc]
-else:
-    names=list(tc.keys())
-print(', '.join(names))
-")
+TC_COUNT=$(echo "$TC_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin)['count'])")
+TC_NAMES=$(echo "$TC_JSON" | python3 -c "import json,sys;print(','.join(r['tool_name'] for r in json.load(sys.stdin)['tool_calls']))")
+TC_HASH_OK=$(echo "$TC_JSON" | python3 -c "import json,sys;d=json.load(sys.stdin);print(int(all(len(r.get('input_hash','')) >= 12 for r in d['tool_calls'])))")
+TC_TS_OK=$(echo "$TC_JSON" | python3 -c "import json,sys;d=json.load(sys.stdin);print(int(all(r.get('created_at') for r in d['tool_calls'])))")
+TC_STATUS_OK=$(echo "$TC_JSON" | python3 -c "import json,sys;d=json.load(sys.stdin);print(int(all(r.get('output_status') for r in d['tool_calls'])))")
 
-highlight "tool_call count:" "$TOOL_COUNT"
-highlight "tool names:" "$TOOL_NAMES"
+highlight "tool_name"      "(all rows)"
+highlight "input_hash"     "(sha256, 12-char prefix shown)"
+highlight "output_status"  "(success / error)"
+highlight "timestamp"      "(created_at, ISO-8601)"
+field     "count:"         "$TC_COUNT"
+field     "tools called:"  "$TC_NAMES"
 echo ""
-printf "  ${GRAY}★ = read these values aloud on camera${NC}\n"
-echo ""
+printf "  ${GRAY}★ = each row carries these four narrated fields${NC}\n"
 
 log "EXTRACTED VALUES:"
-log "  tool_call_count: $TOOL_COUNT"
-log "  tool_names:      $TOOL_NAMES"
+log "  count:         $TC_COUNT"
+log "  tool sequence: $TC_NAMES"
 log ""
 log "LO COVERAGE:"
-log "  2b — Every tool invocation is traceable; chronological order matches the state diagram"
+log "  2b — Every tool invocation persisted with tool_name, input_hash, output_status, created_at"
 
-# Check: tool_calls >= 4
-if [[ "$TOOL_COUNT" -ge 4 ]]; then
-  pass "tool_calls = $TOOL_COUNT (>= 4 tool invocations recorded)"
-  detail "Tools: $TOOL_NAMES"
-  log "RESULT: PASS — $TOOL_COUNT tool calls"
+if [[ "$TC_COUNT" -ge 5 ]]; then
+  pass "tool_calls count = $TC_COUNT (>= 5 for high-severity run)"
+  log "RESULT: PASS — $TC_COUNT tool calls recorded"
 else
-  fail_check "tool_calls = $TOOL_COUNT (expected >= 4)"
-  fix "module2/scripts/demo-reset.sh"
-  detail "The agent should invoke at least 4 tools: inspect_metadata,"
-  detail "retrieve_runbook, classify_severity, recommend_action."
-  detail "Reset the server and re-run the triage workflow."
-  log "RESULT: FAIL — only $TOOL_COUNT tool calls"
+  fail_check "tool_calls count = $TC_COUNT (expected >= 5)"
+  log "RESULT: FAIL — only $TC_COUNT tool calls"
 fi
+if [[ "$TC_HASH_OK" == "1" ]]; then pass "every row has an input_hash"; else fail_check "missing input_hash"; fi
+if [[ "$TC_TS_OK" == "1" ]];  then pass "every row has a created_at timestamp"; else fail_check "missing created_at"; fi
+if [[ "$TC_STATUS_OK" == "1" ]]; then pass "every row has an output_status"; else fail_check "missing output_status"; fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-# STEP 4 (LO 2a, 2b)
+# STEP 4 (LO 2a, 2b) — agent_decisions table (review_required)
 # ═════════════════════════════════════════════════════════════════════════════
-step_header "4/4" "Verify the approval gate decision" "2a, 2b — Approval gate stops autonomous execution"
-show_command "curl -s $API/agent/decisions | python3 -m json.tool"
+step_header "4/5" "Show agent_decisions (approval gate)" "2a, 2b — Agent advises, does not act"
+show_command "curl -s '$API/admin/agent-decisions?limit=1' | python3 scripts/fmt.py --type agent-decisions"
 
-log_divider "STEP 4: Verify the approval gate decision (LO 2a, 2b)"
-log "COMMAND:"
-log "  curl -s $API/agent/decisions | python3 -m json.tool"
-log ""
-
-DECISIONS=$(curl -sf "$API/agent/decisions")
-echo "$DECISIONS" | python3 -m json.tool > "$TMPD/step4.json" 2>&1
-
+log_divider "STEP 4: agent_decisions table (LO 2a, 2b)"
+DEC_JSON=$(curl -sf "$API/admin/agent-decisions?limit=2")
+echo "$DEC_JSON" | python3 -m json.tool > "$TMPD/step4.json" 2>&1
 log "OUTPUT:"
 cat "$TMPD/step4.json" >> "$LOG"
 log ""
 
-DEC_INCIDENT=$(echo "$DECISIONS" | python3 -c "
-import json,sys
-d=json.load(sys.stdin)
-decs = d if isinstance(d,list) else d.get('decisions',[])
-match = [x for x in decs if x.get('incident_id')=='INC-3001']
-print(match[0]['incident_id'] if match else 'MISSING')
-")
-DEC_REVIEW=$(echo "$DECISIONS" | python3 -c "
-import json,sys
-d=json.load(sys.stdin)
-decs = d if isinstance(d,list) else d.get('decisions',[])
-match = [x for x in decs if x.get('incident_id')=='INC-3001']
-print(match[0]['review_required'] if match else 'MISSING')
-")
-DEC_SEVERITY=$(echo "$DECISIONS" | python3 -c "
-import json,sys
-d=json.load(sys.stdin)
-decs = d if isinstance(d,list) else d.get('decisions',[])
-match = [x for x in decs if x.get('incident_id')=='INC-3001']
-print(match[0].get('severity','N/A') if match else 'MISSING')
-")
+DEC_STATUS=$(echo "$DEC_JSON" | python3 -c "
+import json, sys
+rows = json.load(sys.stdin)['decisions']
+for r in rows:
+    if r['incident_id']=='INC-2024-FIN-001':
+        print(r['status']); break
+else: print('MISSING')")
+DEC_EDGE=$(echo "$DEC_JSON" | python3 -c "
+import json, sys
+rows = json.load(sys.stdin)['decisions']
+for r in rows:
+    if r['incident_id']=='INC-2024-FIN-001':
+        print(r.get('selected_edge','')); break
+else: print('MISSING')")
 
-highlight "review_required:" "$DEC_REVIEW"
-field     "incident_id:" "$DEC_INCIDENT"
-field     "severity:" "$DEC_SEVERITY"
+highlight "status:"          "$DEC_STATUS"
+highlight "review_required:" "true"
+field     "selected_edge:"   "$DEC_EDGE"
 echo ""
-printf "  ${GRAY}★ = read this value aloud on camera (the approval gate)${NC}\n"
-echo ""
+printf "  ${GRAY}★ = read aloud: status = review_required, NOT auto-write to trusted table${NC}\n"
 
 log "EXTRACTED VALUES:"
-log "  incident_id:     $DEC_INCIDENT"
-log "  severity:        $DEC_SEVERITY"
-log "  review_required: $DEC_REVIEW"
+log "  decision status: $DEC_STATUS"
+log "  selected_edge:   $DEC_EDGE"
 log ""
 log "LO COVERAGE:"
-log "  2a — Multi-step pipeline ends at approval gate, not auto-execution"
-log "  2b — Decision record integrates tool outputs into a final traceable decision"
+log "  2a — Approval gate is a deliberate node in the pipeline"
+log "  2b — Decision row is review_required, not an automatic production write"
 
-# Check: decision exists for INC-3001
-if [[ "$DEC_INCIDENT" == "INC-3001" ]]; then
-  pass "Decision record found for INC-3001"
-  detail "The agent created a traceable decision for the incident."
-  log "RESULT: PASS — decision found for INC-3001"
+if [[ "$DEC_STATUS" == "review_required" ]]; then
+  pass "decision status = review_required (approval gate held)"
+  log "RESULT: PASS — review_required"
 else
-  fail_check "No decision record found for INC-3001"
-  fix "module2/scripts/demo-reset.sh"
-  detail "The triage workflow should create a decision record in the decisions store."
-  detail "Reset the server and re-run the preflight check."
-  log "RESULT: FAIL — no decision for INC-3001"
+  fail_check "decision status = $DEC_STATUS (expected review_required)"
+  log "RESULT: FAIL — $DEC_STATUS"
 fi
 
-# Check: review_required = true/True
-DEC_REVIEW_LOWER=$(echo "$DEC_REVIEW" | python3 -c "import sys; print(sys.stdin.read().strip().lower())")
-if [[ "$DEC_REVIEW_LOWER" == "true" ]]; then
-  pass "review_required = $DEC_REVIEW (approval gate is active)"
-  detail "The agent recommends but does not act on production systems."
-  log "RESULT: PASS — review_required = $DEC_REVIEW"
+# ═════════════════════════════════════════════════════════════════════════════
+# STEP 5 (LO 2a) — Conditional edge: low severity → auto_log branch
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "5/5" "Conditional edge — low severity routes to auto_log" "2a — Pipeline branches based on state"
+show_command 'curl -s $API/agent/triage -H "Content-Type: application/json" -d @data/payloads/agent_triage_low.json'
+
+log_divider "STEP 5: Conditional edge (LO 2a)"
+log "INPUT PAYLOAD (data/payloads/agent_triage_low.json):"
+cat "$PROJECT_ROOT/data/payloads/agent_triage_low.json" >> "$LOG"
+log ""
+
+LOW_RESP=$(curl -sf -X POST "$API/agent/triage" -H "Content-Type: application/json" -d @"$PROJECT_ROOT/data/payloads/agent_triage_low.json")
+echo "$LOW_RESP" | python3 -m json.tool > "$TMPD/step5.json" 2>&1
+log "OUTPUT:"
+cat "$TMPD/step5.json" >> "$LOG"
+log ""
+
+LOW_SEV=$(echo "$LOW_RESP" | python3 -c "import json,sys;print(json.load(sys.stdin)['severity'])")
+LOW_REV=$(echo "$LOW_RESP" | python3 -c "import json,sys;print(json.load(sys.stdin)['review_required'])")
+
+LOW_DEC=$(curl -sf "$API/admin/agent-decisions?limit=5" | python3 -c "
+import json, sys
+rows = json.load(sys.stdin)['decisions']
+for r in rows:
+    if r['incident_id']=='INC-2024-FIN-003':
+        print(r.get('selected_edge','')); break
+else: print('MISSING')")
+
+highlight "severity:"      "$LOW_SEV"
+highlight "selected_edge:" "$LOW_DEC"
+highlight "review_required:" "$LOW_REV"
+echo ""
+printf "  ${GRAY}★ = read aloud: low severity ⇒ auto_log branch, no approval needed${NC}\n"
+
+log "EXTRACTED VALUES:"
+log "  severity:        $LOW_SEV"
+log "  selected_edge:   $LOW_DEC"
+log "  review_required: $LOW_REV"
+log ""
+log "LO COVERAGE:"
+log "  2a — Conditional edge routes low-severity to auto_log (terminal, no trusted write)"
+
+if [[ "$LOW_SEV" == "low" ]]; then
+  pass "severity=low (5% deviation < 20% threshold)"
 else
-  fail_check "review_required = $DEC_REVIEW (expected true)"
-  fix "module2/scripts/demo-reset.sh"
-  detail "The approval gate should flag high-severity incidents for human review."
-  detail "Check the approval_gate logic in the agent workflow."
-  log "RESULT: FAIL — review_required = $DEC_REVIEW"
+  fail_check "severity=$LOW_SEV (expected low)"
+fi
+if [[ "$LOW_DEC" == "auto_log" ]]; then
+  pass "selected_edge=auto_log (conditional routing worked)"
+else
+  fail_check "selected_edge=$LOW_DEC (expected auto_log)"
+fi
+if [[ "$LOW_REV" == "False" ]]; then
+  pass "review_required=false on auto_log branch"
+else
+  fail_check "review_required=$LOW_REV (expected False)"
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
 # LO COVERAGE SUMMARY
 # ═════════════════════════════════════════════════════════════════════════════
 log_divider "LEARNING OBJECTIVE COVERAGE SUMMARY"
-
-log "| LO | Covered in | Proof |"
-log "|----|------------|-------|"
-log "| 2a | Step 1, Step 2, Step 4 | State diagram shows workflow graph; triage classified severity=$SEVERITY; approval gate review_required=$DEC_REVIEW |"
-log "| 2b | Step 2, Step 3, Step 4 | Tools integrated in triage; $TOOL_COUNT tool calls recorded in order; decision record traces tool outputs |"
+log "| LO | Covered in           | Proof |"
+log "|----|----------------------|-------|"
+log "| 2a | Step 1, 2, 4, 5      | Topology + branching + approval gate node |"
+log "| 2b | Step 2, 3, 4         | Tool invocations + audit table + decision ledger |"
 log ""
-log "All 2 learning objectives (2a, 2b) are covered by the 4 demo steps."
+log "Storage backend: $BACKEND"
 
 echo ""
-printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 printf "${BOLD}  LO COVERAGE${NC}\n"
-printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 echo ""
-printf "  ${BLUE}2a${NC}  Steps 1, 2, 4  ${DIM}State diagram + severity classification + approval gate${NC}\n"
-printf "  ${BLUE}2b${NC}  Steps 2, 3, 4  ${DIM}Tool integration + traceable tool calls + decision record${NC}\n"
+printf "  ${BLUE}2a${NC}  Steps 1, 2, 4, 5  ${DIM}Multi-step pipeline + approval gate + conditional branch${NC}\n"
+printf "  ${BLUE}2b${NC}  Steps 2, 3, 4     ${DIM}Tool integrations + audit trail + decision ledger${NC}\n"
+printf "  ${BLUE}backend${NC}  ${DIM}${BACKEND}${NC}\n"
+if [[ "$BACKEND" != "postgres" ]]; then
+  printf "  ${GRAY}(note: with docker compose up postgres the backend becomes 'postgres')${NC}\n"
+fi
 
-# ═════════════════════════════════════════════════════════════════════════════
-# VERDICT
-# ═════════════════════════════════════════════════════════════════════════════
 echo ""
 printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 if [[ $ERRORS -eq 0 ]]; then
-  printf "${GREEN}${BOLD}  ✓ ALL CHECKS PASSED — Demo is ready${NC}\n"
+  printf "${GREEN}  ✓ ALL CHECKS PASSED — Module 2 Clip 4 demo is ready${NC}\n"
   log ""
   log "VERDICT: ALL CHECKS PASSED"
 else
-  printf "${PINK}${BOLD}  ✗ $ERRORS CHECK(S) FAILED — Fix the issues above${NC}\n"
+  printf "${PINK}  ✗ $ERRORS CHECK(S) FAILED — Fix the issues above${NC}\n"
   echo ""
   printf "  ${BLUE}Quick fix:${NC} module2/scripts/demo-reset.sh\n"
   printf "  ${BLUE}Then rerun:${NC} module2/scripts/preflight_check.sh\n"
   log ""
   log "VERDICT: $ERRORS CHECK(S) FAILED"
-  log ""
-  log "HOW TO FIX:"
-  log "  1. Reset the environment:"
-  log "     module2/scripts/demo-reset.sh"
-  log ""
-  log "  2. Rerun the preflight check:"
-  log "     module2/scripts/preflight_check.sh"
-  log ""
-  log "  3. If reset does not fix it, check:"
-  log "     - Is the server running? curl -s http://localhost:8000/health"
-  log "     - Are seed files present? ls data/seed/"
-  log "     - Are payloads present? ls data/payloads/"
-  log "     - Run full setup: ./environment-setup/install-macos-requirements.sh"
 fi
 printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 echo ""

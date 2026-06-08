@@ -53,6 +53,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.warning("pgvector_seed_skipped")
 
+    # Seed incident metadata catalog used by the agent's inspect_metadata tool
+    try:
+        import json as _json
+        from app.db import postgres as _pg
+        incidents_path = seed_dir / "incidents.json"
+        if incidents_path.exists():
+            _pg.seed_incidents(_json.loads(incidents_path.read_text()))
+    except Exception:
+        logger.warning("incidents_seed_skipped")
+
     _metrics["startup_at"] = datetime.now(timezone.utc).isoformat()
     logger.info("startup_complete")
 
@@ -122,6 +132,34 @@ async def list_reference_docs(limit: int = 20) -> dict:
 async def list_llm_decisions(limit: int = 10) -> list:
     from app.db import postgres
     return await postgres.get_llm_decisions(limit=limit)
+
+
+@app.get("/admin/agent-tool-calls")
+async def list_agent_tool_calls(
+    incident_id: str | None = None,
+    limit: int = 20,
+) -> dict:
+    """List recorded tool calls. The Module 2 Step 3 proof point."""
+    from app.db import postgres
+    rows = await postgres.get_agent_tool_calls(incident_id=incident_id, limit=limit)
+    return {
+        "backend": "postgres" if postgres.is_postgres_available() else "memory",
+        "incident_id": incident_id,
+        "count": len(rows),
+        "tool_calls": rows,
+    }
+
+
+@app.get("/admin/agent-decisions")
+async def list_admin_agent_decisions(limit: int = 10) -> dict:
+    """List agent decision ledger rows. The Module 2 Step 4 proof point."""
+    from app.db import postgres
+    rows = await postgres.get_agent_decisions(limit=limit)
+    return {
+        "backend": "postgres" if postgres.is_postgres_available() else "memory",
+        "count": len(rows),
+        "decisions": rows,
+    }
 
 
 @app.get("/admin/metrics")

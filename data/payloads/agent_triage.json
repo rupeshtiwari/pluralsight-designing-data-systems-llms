@@ -1,0 +1,7 @@
+{
+  "incident_id": "INC-2024-FIN-001",
+  "metric_name": "merchant_revenue_total",
+  "expected_value": 1250000.00,
+  "actual_value": 875000.00,
+  "context": {"region": "NA", "merchant_count": 142}
+}

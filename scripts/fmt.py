@@ -381,68 +381,209 @@ def fmt_batch(data: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def fmt_triage(data: dict) -> str:
+    """Module 2 Step 2 — compact agent-state JSON view.
+
+    ★ on the outline-named fields: incident_id, selected_edge, severity,
+    recommended_action, evidence_summary, decision_reason, review_required.
+    Plus the canonical node path the workflow traversed.
+    """
     lines: list[str] = []
-    lines.extend(_maybe_heading("Anomaly Triage"))
+    lines.extend(_maybe_heading("Agent triage state"))
 
-    for field in ("incident_id", "severity"):
-        v = data.get(field)
-        if v is not None:
-            lines.append(_kv(field.replace("_", " ").title(), v))
+    defaults = {
+        "incident_id", "selected_edge", "severity", "recommended_action",
+        "evidence_summary", "decision_reason", "review_required",
+    }
+    # Display order matches narration order
+    order = [
+        "incident_id", "severity", "selected_edge",
+        "recommended_action", "evidence_summary", "decision_reason",
+        "review_required",
+    ]
+    # Map AnomalyTriageResponse field "root_cause_hypothesis" onto decision_reason
+    if "decision_reason" not in data and data.get("root_cause_hypothesis"):
+        data = {**data, "decision_reason": data["root_cause_hypothesis"]}
+    # If selected_edge missing (triage response), infer from review_required
+    if "selected_edge" not in data:
+        data = {**data, "selected_edge": (
+            "recommend_action" if data.get("review_required") else "auto_log"
+        )}
 
-    hypothesis = data.get("root_cause_hypothesis")
-    if hypothesis:
-        lines.append(f"{_label('Root Cause')}  {hypothesis}")
+    for field in order:
+        if data.get(field) is None:
+            continue
+        value = str(data[field])
+        if _should_star(field, field in defaults):
+            lines.append(_hi(field, value))
+        else:
+            lines.append(_ctx(field, value))
 
-    action = data.get("recommended_action")
-    if action:
-        lines.append(f"{_label('Action')}  {action}")
+    # Canonical node path so the author can read the traversal aloud
+    path_high = (
+        "inspect_metadata → retrieve_runbook → classify_severity → "
+        "recommend_action → approval_gate"
+    )
+    path_low = (
+        "inspect_metadata → retrieve_runbook → classify_severity → auto_log"
+    )
+    selected = data.get("selected_edge", "")
+    path = path_high if selected == "recommend_action" else path_low
+    lines.append("")
+    lines.append(f"  {PINK}★{RESET} {BLUE}path:{RESET} {LGRN}{path}{RESET}")
 
-    evidence = data.get("evidence_summary")
-    if evidence:
-        lines.append(f"{_label('Evidence')}  {_dim(evidence)}")
+    return "\n".join(lines)
 
-    review = data.get("review_required")
-    if review is not None:
-        lines.append(_kv("Review Required", review))
 
-    # Agent state extras
-    node = data.get("current_node")
-    if node:
-        lines.append(_kv("Current Node", node))
+# ---------------------------------------------------------------------------
+# Format: mermaid (Module 2 Step 1 — show LangGraph topology source)
+# ---------------------------------------------------------------------------
 
-    decisions = data.get("decisions", [])
-    if decisions:
+def fmt_mermaid(data: dict) -> str:
+    """Print the Mermaid source verbatim plus a star-highlighted active node.
+
+    Outline asks the four named nodes (inspect_metadata, retrieve_runbook,
+    recommend_action, approval_gate) to be highlighted; we star each one
+    in a dedicated legend block so the diagram source stays raw and copy-
+    pasteable.
+    """
+    lines: list[str] = []
+    lines.extend(_maybe_heading("LangGraph topology (Mermaid)"))
+
+    mermaid_src = data.get("mermaid", "")
+    active = data.get("active_node", "")
+
+    # The raw mermaid source — printed verbatim so it can be pasted into
+    # any Mermaid renderer to produce the on-screen diagram.
+    if mermaid_src:
+        lines.append(f"{DIM}--- mermaid source ---{RESET}")
+        for line in mermaid_src.splitlines():
+            lines.append(f"  {DIM}{line}{RESET}")
+        lines.append(f"{DIM}--- end ---{RESET}")
         lines.append("")
-        lines.append(_heading("Decisions"))
-        for d in decisions:
-            node_name = d.get("node", "?")
-            result = str(d.get("result", d.get("action", "?"))).lower()
-            if result in ("allow", "allowed", "escalate"):
-                result_str = _safe(result)
-            elif result in ("block", "blocked", "reject"):
-                result_str = _danger(result)
+
+    nodes = data.get("nodes", []) or []
+    if nodes:
+        lines.append(f"  {BLUE}nodes:{RESET}")
+        # The four nodes the outline names must be starred
+        outline = {"inspect_metadata", "retrieve_runbook", "recommend_action", "approval_gate"}
+        for n in nodes:
+            if _should_star(n, n in outline):
+                lines.append(f"  {PINK}★{RESET} {LGRN}{n}{RESET}")
             else:
-                result_str = _dim(result)
-            lines.append(f"  {_label(node_name)}  {result_str}")
+                lines.append(f"    {GRAY}{n}{RESET}")
 
-    tool_calls = data.get("tool_calls", [])
-    if tool_calls:
+    if active:
         lines.append("")
-        lines.append(_heading("Tool Calls"))
-        for tc in tool_calls:
-            tool = tc.get("tool", tc.get("name", "?"))
-            status = str(tc.get("status", "done")).lower()
-            lines.append(f"  {_label(tool)}  {_dim(status)}")
+        lines.append(f"  {PINK}★ active node:{RESET} {LGRN}{active}{RESET}")
 
-    rails = _rails_line(data)
-    if rails:
-        lines.append("")
-        lines.append(rails)
+    return "\n".join(lines)
 
-    tok = data.get("token_usage") or data.get("usage") or data.get("tokens")
-    if tok is not None:
-        lines.append(_tokens(data, force_blocked=_is_blocked(data)))
 
+# ---------------------------------------------------------------------------
+# Format: tool-calls (Module 2 Step 3 — agent_tool_calls table)
+# ---------------------------------------------------------------------------
+
+def fmt_tool_calls(data: dict) -> str:
+    """Compact one-screen view of agent_tool_calls.
+
+    ★ on every row across: tool_name, input_hash (12 char prefix),
+    output_status, created_at. Limits to 7 rows max so the table fits
+    on screen during the demo.
+    """
+    lines: list[str] = []
+    lines.extend(_maybe_heading("agent_tool_calls (Postgres)"))
+
+    backend = data.get("backend")
+    if backend:
+        lines.append(_hi("backend", str(backend)) if _should_star("backend", False)
+                     else _ctx("backend", str(backend)))
+    incident = data.get("incident_id")
+    if incident:
+        lines.append(_ctx("incident_id", str(incident)))
+    count = data.get("count")
+    if count is not None:
+        lines.append(_ctx("count", str(count)))
+
+    rows = data.get("tool_calls", []) or []
+    rows = rows[:7]
+    lines.append("")
+    # Column header
+    lines.append(
+        f"  {BLUE}{'tool_name':<22}{RESET} "
+        f"{BLUE}{'input_hash':<14}{RESET} "
+        f"{BLUE}{'output_status':<15}{RESET} "
+        f"{BLUE}created_at{RESET}"
+    )
+    for r in rows:
+        tool = str(r.get("tool_name", "?"))
+        h = str(r.get("input_hash", ""))[:12]
+        status = str(r.get("output_status", ""))
+        ts = str(r.get("created_at", ""))[:19]
+        status_color = LIME if status == "success" else PINK
+        lines.append(
+            f"  {PINK}★{RESET} {LGRN}{tool:<20}{RESET} "
+            f"{LGRN}{h:<12}{RESET}   "
+            f"{status_color}{status:<13}{RESET}   "
+            f"{LGRN}{ts}{RESET}"
+        )
+    if not rows:
+        lines.append(f"  {DIM}(no tool calls recorded){RESET}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Format: agent-decisions (Module 2 Step 4 — agent_decisions table)
+# ---------------------------------------------------------------------------
+
+def fmt_agent_decisions(data: Any) -> str:
+    """Show the latest agent_decisions row with ★ on the outline fields."""
+    lines: list[str] = []
+    lines.extend(_maybe_heading("agent_decisions (latest)"))
+
+    # Accept either the /admin/agent-decisions wrapper or /agent/decisions list
+    if isinstance(data, dict) and "decisions" in data:
+        backend = data.get("backend")
+        if backend:
+            lines.append(_ctx("backend", str(backend)))
+        rows = data.get("decisions", []) or []
+    elif isinstance(data, list):
+        rows = data
+    elif isinstance(data, dict):
+        rows = [data]
+    else:
+        return fmt_raw({"value": data})
+
+    if not rows:
+        lines.append(f"  {DIM}(no decisions recorded){RESET}")
+        return "\n".join(lines)
+
+    record = rows[0]
+    defaults = {
+        "incident_id", "status", "severity", "recommended_action",
+        "selected_edge", "decision_reason",
+    }
+    order = [
+        "incident_id", "status", "severity", "selected_edge",
+        "recommended_action", "decision_reason", "evidence_summary",
+    ]
+    for field in order:
+        if record.get(field) is None:
+            continue
+        value = str(record[field])
+        if _should_star(field, field in defaults):
+            lines.append(_hi(field, value))
+        else:
+            lines.append(_ctx(field, value))
+
+    # review_required is implicit in status == 'review_required' — show it
+    # explicitly so the proof point is unmistakable on screen.
+    review_required = (str(record.get("status", "")).lower() == "review_required")
+    lines.append("")
+    rr_val = "true" if review_required else "false"
+    rr_color = LIME if review_required else GRAY
+    lines.append(
+        f"  {PINK}★{RESET} {BLUE}review_required:{RESET} {rr_color}{rr_val}{RESET}"
+    )
     return "\n".join(lines)
 
 
@@ -841,6 +982,9 @@ FORMATTERS: dict[str, Any] = {
     "dispute": fmt_dispute,
     "batch": fmt_batch,
     "triage": fmt_triage,
+    "mermaid": fmt_mermaid,
+    "tool-calls": fmt_tool_calls,
+    "agent-decisions": fmt_agent_decisions,
     "catalog": fmt_catalog,
     "validation": fmt_validation,
     "dashboard": fmt_dashboard,
@@ -898,7 +1042,12 @@ def main() -> None:
 
     # Unwrap single-element lists so formatters always get a dict
     if isinstance(data, list):
-        if len(data) == 1 and isinstance(data[0], dict):
+        if args.type == "agent-decisions":
+            # The /agent/decisions endpoint returns a bare list of rows
+            data = {"decisions": data, "count": len(data)}
+        elif args.type == "tool-calls":
+            data = {"tool_calls": data, "count": len(data)}
+        elif len(data) == 1 and isinstance(data[0], dict):
             data = data[0]
         elif args.type == "audit":
             # Audit accepts a list of entries directly

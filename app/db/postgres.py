@@ -4,9 +4,9 @@ Prefers a real Postgres connection (via asyncpg) when reachable. Falls back
 to in-memory storage with a one-time warning if Postgres is unavailable so
 local development without Docker still works.
 
-Module 1 demo specifically requires real PG for the llm_decisions proof.
-Other tables (agent_*, pipeline_runs) currently stay in-memory until
-phases 2-3 wire them to real PG.
+Module 1 demo requires real PG for the llm_decisions proof. Module 2 adds
+agent_tool_calls and agent_decisions to real PG with the same memory
+fallback pattern so the LangGraph workflow is fully auditable end-to-end.
 """
 from __future__ import annotations
 
@@ -89,6 +89,41 @@ async def _ensure_schema(conn: Any) -> None:
         "CREATE INDEX IF NOT EXISTS idx_llm_decisions_request_id "
         "ON llm_decisions(request_id)"
     )
+    # Module 2: agent tool-call audit trail
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS agent_tool_calls (
+            id UUID PRIMARY KEY,
+            incident_id VARCHAR NOT NULL,
+            tool_name VARCHAR NOT NULL,
+            input_hash VARCHAR NOT NULL,
+            output_status VARCHAR NOT NULL,
+            output JSONB,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_tool_calls_incident "
+        "ON agent_tool_calls(incident_id)"
+    )
+    # Module 2: agent decision ledger (approval gate writes here)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS agent_decisions (
+            id UUID PRIMARY KEY,
+            incident_id VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            severity VARCHAR,
+            recommended_action TEXT,
+            evidence_summary TEXT,
+            decision_reason TEXT,
+            selected_edge VARCHAR,
+            state JSONB,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_decisions_incident "
+        "ON agent_decisions(incident_id)"
+    )
 
 
 def is_postgres_available() -> bool:
@@ -101,6 +136,23 @@ _mem_agent_decisions: list[dict[str, Any]] = []
 _mem_agent_tool_calls: list[dict[str, Any]] = []
 _mem_pipeline_runs: list[dict[str, Any]] = []
 _mem_agent_states: dict[str, dict[str, Any]] = {}
+_mem_incidents: dict[str, dict[str, Any]] = {}
+
+
+def seed_incidents(records: list[dict[str, Any]]) -> int:
+    """Seed in-memory incident metadata used by the inspect_metadata tool.
+
+    Real Postgres has its own per-table schemas in customer projects; for the
+    course demo the incident metadata is a fixed reference catalog read by the
+    agent's first tool call, so an in-memory dict keyed by incident_id is the
+    simplest accurate model.
+    """
+    _mem_incidents.clear()
+    for rec in records:
+        iid = rec.get("incident_id")
+        if iid:
+            _mem_incidents[iid] = rec
+    return len(_mem_incidents)
 
 
 # ── llm_decisions (real PG when available) ──────────────────────────────────
@@ -177,28 +229,154 @@ async def get_llm_decisions(limit: int = 50) -> list[dict[str, Any]]:
     return list(reversed(_mem_llm_decisions[-limit:]))
 
 
-# ── Remaining tables stay in-memory until phases 2-3 ────────────────────────
+# ── agent_decisions (real PG when available) ────────────────────────────────
 
 async def insert_agent_decision(record: dict[str, Any]) -> dict[str, Any]:
     record.setdefault("id", str(uuid4()))
     record.setdefault("created_at", _dt.datetime.utcnow().isoformat())
+    pool = await _get_pool()
+    if pool is not None:
+        try:
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO agent_decisions
+                      (id, incident_id, status, severity, recommended_action,
+                       evidence_summary, decision_reason, selected_edge, state)
+                    VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+                    """,
+                    record["id"],
+                    record["incident_id"],
+                    record.get("status", "review_required"),
+                    record.get("severity"),
+                    record.get("recommended_action"),
+                    record.get("evidence_summary"),
+                    record.get("decision_reason"),
+                    record.get("selected_edge"),
+                    json.dumps(record.get("state", {}), default=str),
+                )
+            log.info("pg.insert_agent_decision", record_id=record["id"], backend="postgres")
+            return record
+        except Exception as exc:  # noqa: BLE001
+            log.warning("pg.insert_agent_decision_failed", error=str(exc))
     _mem_agent_decisions.append(record)
+    log.info("pg.insert_agent_decision", record_id=record["id"], backend="memory")
     return record
 
 
 async def get_agent_decisions(limit: int = 50) -> list[dict[str, Any]]:
+    pool = await _get_pool()
+    if pool is not None:
+        try:
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT id::text, incident_id, status, severity,
+                           recommended_action, evidence_summary,
+                           decision_reason, selected_edge, state, created_at
+                    FROM agent_decisions
+                    ORDER BY created_at DESC
+                    LIMIT $1
+                    """,
+                    limit,
+                )
+            out = []
+            for r in rows:
+                d = dict(r)
+                if isinstance(d.get("state"), str):
+                    try:
+                        d["state"] = json.loads(d["state"])
+                    except Exception:  # noqa: BLE001
+                        pass
+                if d.get("created_at") is not None:
+                    d["created_at"] = d["created_at"].isoformat()
+                out.append(d)
+            return out
+        except Exception as exc:  # noqa: BLE001
+            log.warning("pg.get_agent_decisions_failed", error=str(exc))
     return list(reversed(_mem_agent_decisions[-limit:]))
 
+
+# ── agent_tool_calls (real PG when available) ───────────────────────────────
 
 async def insert_agent_tool_call(record: dict[str, Any]) -> dict[str, Any]:
     record.setdefault("id", str(uuid4()))
     record.setdefault("created_at", _dt.datetime.utcnow().isoformat())
+    pool = await _get_pool()
+    if pool is not None:
+        try:
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO agent_tool_calls
+                      (id, incident_id, tool_name, input_hash, output_status, output)
+                    VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb)
+                    """,
+                    record["id"],
+                    record["incident_id"],
+                    record["tool_name"],
+                    record["input_hash"],
+                    record.get("output_status", "success"),
+                    json.dumps(record.get("output", {}), default=str),
+                )
+            log.info("pg.insert_agent_tool_call", record_id=record["id"], backend="postgres")
+            return record
+        except Exception as exc:  # noqa: BLE001
+            log.warning("pg.insert_agent_tool_call_failed", error=str(exc))
     _mem_agent_tool_calls.append(record)
+    log.info("pg.insert_agent_tool_call", record_id=record["id"], backend="memory")
     return record
 
 
-async def get_agent_tool_calls(incident_id: str) -> list[dict[str, Any]]:
-    return [r for r in _mem_agent_tool_calls if r.get("incident_id") == incident_id]
+async def get_agent_tool_calls(
+    incident_id: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    pool = await _get_pool()
+    if pool is not None:
+        try:
+            async with pool.acquire() as conn:
+                if incident_id:
+                    rows = await conn.fetch(
+                        """
+                        SELECT id::text, incident_id, tool_name, input_hash,
+                               output_status, output, created_at
+                        FROM agent_tool_calls
+                        WHERE incident_id = $1
+                        ORDER BY created_at ASC
+                        LIMIT $2
+                        """,
+                        incident_id, limit,
+                    )
+                else:
+                    rows = await conn.fetch(
+                        """
+                        SELECT id::text, incident_id, tool_name, input_hash,
+                               output_status, output, created_at
+                        FROM agent_tool_calls
+                        ORDER BY created_at DESC
+                        LIMIT $1
+                        """,
+                        limit,
+                    )
+            out = []
+            for r in rows:
+                d = dict(r)
+                if isinstance(d.get("output"), str):
+                    try:
+                        d["output"] = json.loads(d["output"])
+                    except Exception:  # noqa: BLE001
+                        pass
+                if d.get("created_at") is not None:
+                    d["created_at"] = d["created_at"].isoformat()
+                out.append(d)
+            return out
+        except Exception as exc:  # noqa: BLE001
+            log.warning("pg.get_agent_tool_calls_failed", error=str(exc))
+    if incident_id:
+        rows = [r for r in _mem_agent_tool_calls if r.get("incident_id") == incident_id]
+        return rows[:limit]
+    return list(reversed(_mem_agent_tool_calls[-limit:]))
 
 
 async def upsert_agent_state(incident_id: str, state: dict[str, Any]) -> None:
@@ -254,11 +432,29 @@ async def get_customer_metadata(customer_id: int | str) -> dict[str, Any]:
 
 
 async def get_incident_metadata(incident_id: str) -> dict[str, Any]:
+    """Return seeded incident metadata for the agent's inspect_metadata tool.
+
+    Looks up the seeded catalog first so demo incidents return their real
+    affected tables / system / first_seen fields. Falls back to a generic
+    record so the agent never errors on an unknown id.
+    """
+    rec = _mem_incidents.get(incident_id)
+    if rec is not None:
+        return {
+            "incident_id": incident_id,
+            "system": rec.get("system", "finance_pipeline"),
+            "first_seen": rec.get("first_seen", _dt.datetime.utcnow().isoformat()),
+            "affected_tables": rec.get("affected_tables", []),
+            "metric_name": rec.get("metric_name"),
+            "expected_value": rec.get("expected_value"),
+            "actual_value": rec.get("actual_value"),
+            "context": rec.get("context", {}),
+        }
     return {
         "incident_id": incident_id,
-        "system": "order_pipeline",
+        "system": "unknown_pipeline",
         "first_seen": _dt.datetime.utcnow().isoformat(),
-        "affected_tables": ["orders", "order_details"],
+        "affected_tables": [],
     }
 
 
