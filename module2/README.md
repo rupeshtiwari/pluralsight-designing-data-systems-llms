@@ -24,6 +24,7 @@ This demo runs a real LangGraph workflow for a failed NorthWind finance data qua
 | Proof point | Step | LO |
 |-------------|------|----|
 | Mermaid state diagram from the compiled graph highlights `inspect_metadata`, `retrieve_runbook`, `recommend_action`, `approval_gate` | Step 1 | 2a |
+| Active path on the Mermaid diagram reflects the nodes the workflow actually executed | Step 2b | 2a |
 | Agent state JSON shows `incident_id`, `selected_edge`, evidence summary, and decision reason | Step 2 | 2a, 2b |
 | PostgreSQL `agent_tool_calls` table shows `tool_name`, `input_hash`, `output_status`, and timestamp for every node | Step 3 | 2b |
 | PostgreSQL `agent_decisions` table shows `review_required` instead of an automatic production write | Step 4 | 2a, 2b |
@@ -93,6 +94,30 @@ curl -s http://localhost:8000/agent/triage \
 - ★ path: `inspect_metadata → retrieve_runbook → classify_severity → recommend_action → approval_gate`
 
 **What the learner should notice**: The state is one compact JSON object with the exact fields the rest of the team needs. The path line shows which nodes ran. `review_required=true` is the workflow stopping at the approval gate.
+
+### Step 2b: Show the active path on the Mermaid diagram (LO 2a)
+
+**Goal**: Prove the diagram is not just a static topology — it reflects the path the workflow actually took.
+
+```bash
+curl -s "http://localhost:8000/agent/graph?incident_id=INC-2024-FIN-001" | \
+  python3 scripts/fmt.py --type mermaid \
+  --title "LangGraph topology with active path highlighted" \
+  --why "Mermaid classDef styles the nodes that executed during the run"
+```
+
+**Expected output**: The same Mermaid source as Step 1, with two extra lines at the bottom:
+
+```text
+classDef active fill:#CFFF6E,stroke:#FF1675,stroke-width:3px,color:#000000;
+class inspect_metadata,retrieve_runbook,classify_severity,recommend_action,approval_gate active;
+```
+
+Plus a narrated line:
+
+- ★ active path: `inspect_metadata → retrieve_runbook → classify_severity → recommend_action → approval_gate`
+
+**What the learner should notice**: The active path is computed by looking up the executed `agent_tool_calls` rows for this incident — the diagram is the audit trail, not a sales picture.
 
 ### Step 3: Show the agent_tool_calls table in Postgres (LO 2b)
 

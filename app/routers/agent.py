@@ -97,9 +97,17 @@ async def triage_anomaly(req: AnomalyTriageRequest) -> AnomalyTriageResponse:
 # GET /agent/graph
 # ------------------------------------------------------------------
 @router.get("/graph")
-async def get_graph_topology() -> dict[str, Any]:
-    """Return the LangGraph topology (Mermaid + nodes + edges)."""
-    return agent_graph.graph_topology()
+async def get_graph_topology(incident_id: str | None = None) -> dict[str, Any]:
+    """Return the LangGraph topology (Mermaid + nodes + edges).
+
+    When `incident_id` is provided, look up the executed tool calls for
+    that incident and highlight the active path in the Mermaid diagram.
+    """
+    active_path: list[str] = []
+    if incident_id:
+        rows = await postgres.get_agent_tool_calls(incident_id)
+        active_path = [r.get("tool_name") for r in rows if r.get("tool_name")]
+    return agent_graph.graph_topology(active_path=active_path or None)
 
 
 # ------------------------------------------------------------------

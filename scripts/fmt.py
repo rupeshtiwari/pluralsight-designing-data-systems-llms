@@ -476,6 +476,16 @@ def fmt_mermaid(data: dict) -> str:
         lines.append("")
         lines.append(f"  {PINK}★ active node:{RESET} {LGRN}{active}{RESET}")
 
+    active_path = data.get("active_path") or []
+    if active_path:
+        lines.append("")
+        path_str = " → ".join(active_path)
+        lines.append(f"  {PINK}★ active path:{RESET} {LGRN}{path_str}{RESET}")
+        lines.append(
+            f"  {DIM}(classDef 'active' in the Mermaid source above "
+            f"highlights these nodes in green){RESET}"
+        )
+
     return "\n".join(lines)
 
 

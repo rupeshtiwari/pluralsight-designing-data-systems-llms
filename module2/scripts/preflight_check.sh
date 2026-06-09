@@ -223,6 +223,47 @@ else
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
+# STEP 2b (LO 2a) — Active path on the Mermaid diagram
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "STEP 2b/5: Active path on Mermaid diagram" "2a — Workflow advances visibly"
+show_command "curl -s '$API/agent/graph?incident_id=INC-2024-FIN-001' | python3 scripts/fmt.py --type mermaid"
+log_divider "STEP 2b: Active path on Mermaid (LO 2a)"
+log "COMMAND:"
+log "  curl -s '$API/agent/graph?incident_id=INC-2024-FIN-001'"
+log ""
+
+ACTIVE_GRAPH=$(curl -sf "$API/agent/graph?incident_id=INC-2024-FIN-001")
+ACTIVE_PATH=$(echo "$ACTIVE_GRAPH" | python3 -c "import json,sys;d=json.load(sys.stdin);print(','.join(d.get('active_path',[])))" 2>/dev/null || echo "")
+HAS_CLASSDEF=$(echo "$ACTIVE_GRAPH" | python3 -c "import json,sys;print('yes' if 'classDef active' in json.load(sys.stdin).get('mermaid','') else 'no')" 2>/dev/null || echo "no")
+
+log "OUTPUT:"
+log "  active_path: $ACTIVE_PATH"
+log "  classDef active in mermaid: $HAS_CLASSDEF"
+log ""
+
+printf "  ${PINK}★${NC} ${BLUE}active path:${NC} ${LGREEN}${ACTIVE_PATH}${NC}\n"
+printf "  ${PINK}★${NC} ${BLUE}classDef 'active' present:${NC} ${LGREEN}${HAS_CLASSDEF}${NC}\n"
+echo ""
+printf "  ${BLUE}★${NC} = the active path comes from the actual agent_tool_calls rows for this incident\n"
+echo ""
+
+if [[ "$ACTIVE_PATH" == *"inspect_metadata"* && "$ACTIVE_PATH" == *"approval_gate"* ]]; then
+  pass "active_path includes inspect_metadata and approval_gate"
+  log "RESULT: PASS — active_path includes the narrated start and end nodes"
+else
+  fail_check "active_path missing expected nodes (got: $ACTIVE_PATH)"
+  log "RESULT: FAIL — active_path = $ACTIVE_PATH"
+fi
+
+if [[ "$HAS_CLASSDEF" == "yes" ]]; then
+  pass "Mermaid source contains classDef 'active' for path highlighting"
+  log "RESULT: PASS — classDef active present"
+else
+  fail_check "Mermaid source is missing the active classDef"
+  log "RESULT: FAIL — no classDef active in mermaid"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
 # STEP 3 (LO 2b) — agent_tool_calls table
 # ═════════════════════════════════════════════════════════════════════════════
 step_header "3/5" "Show agent_tool_calls (Postgres receipts)" "2b — Tool integration is traceable"

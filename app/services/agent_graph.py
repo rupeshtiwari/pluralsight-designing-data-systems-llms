@@ -329,8 +329,13 @@ def get_graph():
     return _COMPILED
 
 
-def graph_topology() -> dict[str, Any]:
-    """Return mermaid source + node/edge metadata derived from the compiled graph."""
+def graph_topology(active_path: list[str] | None = None) -> dict[str, Any]:
+    """Return mermaid source + node/edge metadata derived from the compiled graph.
+
+    When `active_path` is provided, append Mermaid classDef styles that
+    highlight the executed nodes in the Pluralsight brand palette so the
+    diagram shows which path the workflow took during a real run.
+    """
     compiled = get_graph()
     graph_view = compiled.get_graph()
     mermaid = graph_view.draw_mermaid()
@@ -339,4 +344,19 @@ def graph_topology() -> dict[str, Any]:
         {"source": e.source, "target": e.target, "conditional": bool(e.conditional)}
         for e in graph_view.edges
     ]
-    return {"mermaid": mermaid, "nodes": nodes, "edges": edges}
+    if active_path:
+        seen: set[str] = set()
+        ordered = [n for n in active_path if not (n in seen or seen.add(n))]
+        highlights = ",".join(ordered)
+        if highlights:
+            mermaid = mermaid.rstrip() + (
+                "\n\tclassDef active fill:#CFFF6E,stroke:#FF1675,"
+                "stroke-width:3px,color:#000000;\n"
+                f"\tclass {highlights} active;\n"
+            )
+    return {
+        "mermaid": mermaid,
+        "nodes": nodes,
+        "edges": edges,
+        "active_path": active_path or [],
+    }
