@@ -32,6 +32,10 @@ HIGHLIGHT: set[str] = set()
 # True once a --title panel is printed, so formatters skip their own heading.
 PANEL_SHOWN = False
 
+# True when --show-mermaid is passed; default False so the raw Mermaid
+# source stays out of on-screen demo output (~20 lines, not narrated).
+SHOW_MERMAID = False
+
 
 def _maybe_heading(text: str) -> list[str]:
     """Return the formatter's own heading lines, unless a panel was shown."""
@@ -439,22 +443,30 @@ def fmt_triage(data: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def fmt_mermaid(data: dict) -> str:
-    """Print the Mermaid source verbatim plus a star-highlighted active node.
+    """One-screen summary of the LangGraph topology.
 
-    Outline asks the four named nodes (inspect_metadata, retrieve_runbook,
-    recommend_action, approval_gate) to be highlighted; we star each one
-    in a dedicated legend block so the diagram source stays raw and copy-
-    pasteable.
+    By default we hide the raw Mermaid source (~20 lines, not narrated)
+    and surface only the fields the narration reads aloud: the four
+    outline-named nodes and the active path. Pass --show-mermaid to also
+    print the raw source verbatim for the developer-facing dump.
     """
     lines: list[str] = []
-    lines.extend(_maybe_heading("LangGraph topology (Mermaid)"))
+    lines.extend(_maybe_heading("LangGraph topology"))
 
     mermaid_src = data.get("mermaid", "")
     active = data.get("active_node", "")
 
-    # The raw mermaid source — printed verbatim so it can be pasted into
-    # any Mermaid renderer to produce the on-screen diagram.
+    # Tell the audience where the diagram comes from, without dumping it.
     if mermaid_src:
+        line_count = len(mermaid_src.splitlines())
+        lines.append(
+            f"  {DIM}source: compiled.get_graph().draw_mermaid() "
+            f"({line_count} lines, hidden){RESET}"
+        )
+        lines.append("")
+
+    # Optional: dump the raw source when the author asks for it.
+    if SHOW_MERMAID and mermaid_src:
         lines.append(f"{DIM}--- mermaid source ---{RESET}")
         for line in mermaid_src.splitlines():
             lines.append(f"  {DIM}{line}{RESET}")
@@ -1032,11 +1044,17 @@ def main() -> None:
         default="",
         help="Header subtitle — why we are showing it",
     )
+    parser.add_argument(
+        "--show-mermaid",
+        action="store_true",
+        help="Print the raw Mermaid source (hidden by default)",
+    )
     args = parser.parse_args()
 
-    global HIGHLIGHT
+    global HIGHLIGHT, SHOW_MERMAID
     if args.highlight:
         HIGHLIGHT = {f.strip() for f in args.highlight.split(",") if f.strip()}
+    SHOW_MERMAID = bool(args.show_mermaid)
 
     raw = sys.stdin.read().strip()
     if not raw:
