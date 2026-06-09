@@ -225,7 +225,7 @@ fi
 # ═════════════════════════════════════════════════════════════════════════════
 # STEP 2b (LO 2a) — Active path on the Mermaid diagram
 # ═════════════════════════════════════════════════════════════════════════════
-step_header "STEP 2b/5: Active path on Mermaid diagram" "2a — Workflow advances visibly"
+step_header "2b/5" "Active path on Mermaid diagram" "2a — Workflow advances visibly"
 show_command "curl -s '$API/agent/graph?incident_id=INC-2024-FIN-001' | python3 scripts/fmt.py --type mermaid"
 log_divider "STEP 2b: Active path on Mermaid (LO 2a)"
 log "COMMAND:"
