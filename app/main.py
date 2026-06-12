@@ -116,6 +116,49 @@ async def seed_knowledge_base() -> dict:
     }
 
 
+@app.get("/admin/raw-feedback")
+async def list_raw_feedback(limit: int = 3) -> dict:
+    """Return sample rows from raw.feedback for Module 1 Step 1."""
+    rows = duckdb_client.fetch_all_feedback(limit=limit)
+    return {"count": len(rows), "rows": rows}
+
+
+@app.get("/admin/trusted-rows")
+async def list_trusted_rows(limit: int = 3) -> dict:
+    """Return sample rows from trusted.feedback_enriched for Module 1 Step 6."""
+    rows = duckdb_client.fetch_trusted_rows(limit=limit)
+    return {"count": len(rows), "rows": rows}
+
+
+@app.get("/admin/quarantine-rows")
+async def list_quarantine_rows(limit: int = 3) -> dict:
+    """Return sample rows from quarantine.llm_outputs for Module 1 Step 7."""
+    rows = duckdb_client.fetch_quarantine_rows(limit=limit)
+    return {"count": len(rows), "rows": rows}
+
+
+@app.get("/admin/retrieve")
+async def retrieve_grounding(q: str, top_k: int = 3, doc_type: str | None = None) -> dict:
+    """pgvector similarity retrieval (Module 1 Step 2).
+
+    Returns the top-k documents most similar to `q` using the same
+    embedding + cosine distance the enrichment service uses internally.
+    """
+    from app.db import pgvector, postgres
+    docs = await pgvector.retrieve_similar_docs(q, top_k=top_k, doc_type=doc_type)
+    return {
+        "query": q,
+        "top_k": top_k,
+        "doc_type_filter": doc_type,
+        "backend": "postgres" if postgres.is_postgres_available() else "memory",
+        "results": [
+            {"rank": i + 1, "doc_id": d.get("doc_id"), "title": d.get("title"),
+             "doc_type": d.get("doc_type")}
+            for i, d in enumerate(docs)
+        ],
+    }
+
+
 @app.get("/admin/json-contract")
 async def get_json_contract() -> dict:
     """Return the FeedbackEnrichResponse JSON contract introduced in Clip 2.

@@ -4,13 +4,9 @@
 
 **The problem:** Your team wants to use an LLM to classify thousands of customer feedback records, but a wrong classification that silently lands in a trusted analytics table can mislead every dashboard and decision downstream. How do you let an LLM enrich your data without letting it corrupt your warehouse?
 
-**What you will see:** A working boundary where raw feedback flows in, the LLM proposes a classification with a confidence score and cited sources, and the output only reaches the trusted table after four explicit validation gates pass. You will also see what happens when a record fails — it lands in quarantine, never in trusted.
+**What you will see:** Seven distinct moments in the enrichment pipeline — actual source records, a real similarity search, the boundary contract, the LLM's proposal, the durable audit, the promoted trusted row, and the quarantined failure. Each step shows a different surface of the system, so by the end you can point to where every guarantee lives.
 
-**What you walk away with:** A repeatable pattern for placing an LLM inside an existing pipeline (1a), drawing a clean line between deterministic and AI-driven steps (1b), and designing a data flow where every LLM output is traceable and validated before it becomes trusted data (1d). This is the foundation every later module builds on.
-
-## Overview
-
-This demo runs the NorthWind feedback enrichment flow from DuckDB source records through FastAPI LLM enrichment to the trusted output table — and proves the negative case by sending an ambiguous record through the same pipe and watching it land in quarantine.
+**What you walk away with:** A repeatable pattern for placing an LLM inside an existing pipeline (1a), drawing a clean line between deterministic and AI-driven steps (1b), and designing a data flow where every LLM output is traceable and validated before it becomes trusted data (1d).
 
 ## Learning objectives covered
 
@@ -20,23 +16,23 @@ This demo runs the NorthWind feedback enrichment flow from DuckDB source records
 | 1b | Define system boundaries so learners can separate deterministic and AI-driven components |
 | 1d | Demonstrate designing data flows that incorporate LLM outputs |
 
-## What this demo proves
+## What this demo proves — and each step is unique
 
-| Proof point | Step | LO |
-|-------------|------|----|
-| DuckDB `raw.feedback` has input records ready for enrichment | Step 1 | 1a |
-| pgvector reference documents (Postgres + 384-dim embeddings) ground the LLM | Step 2 | 1a, 1b |
-| The JSON contract from Clip 2 is the boundary between deterministic and AI-driven code | Step 3 | 1b |
-| FastAPI returns structured enrichment with request_id, category, summary, confidence, source_doc_ids | Step 4 | 1a, 1b |
-| `llm_decisions` records the four validation gates: schema, grounding, confidence, source ID | Step 5 | 1b, 1d |
-| DuckDB `trusted.feedback_enriched` row count grows after validated enrichment | Step 6 | 1d |
-| DuckDB `quarantine.llm_outputs` receives a failed record — trusted table stays clean | Step 7 | 1d |
+| Step | Endpoint | What it teaches (nothing repeats) | LO |
+|------|----------|-----------------------------------|----|
+| 1 | `/admin/raw-feedback` | Source data has real structure — actual customer text, not just a row count | 1a |
+| 2 | `/admin/retrieve` | pgvector is a live retrieval mechanism — top-3 matches with cosine ranking, not just stored docs | 1a, 1b |
+| 3 | `/admin/json-contract` | The LLM is constrained by a contract before it can speak — Pydantic schema + four named gates | 1b |
+| 4 | `/enrich/feedback` | The LLM produces one classified proposal with cited sources | 1a, 1b |
+| 5 | `/admin/llm-decisions` | Every decision is durably recorded with a check-by-check audit | 1b, 1d |
+| 6 | `/admin/trusted-rows` | The promoted row's actual content lives in `trusted.feedback_enriched` | 1d |
+| 7 | `/admin/quarantine-rows` | The failed row, the gate that rejected it, and the LLM proposal sit in `quarantine.llm_outputs` for human review | 1d |
 
 ## Prerequisites
 
-1. Server is running: `curl -s http://localhost:8000/health | python3 -m json.tool`
-2. DuckDB has seed data loaded (10 feedback records)
-3. Knowledge base is seeded (8 reference documents)
+1. Server running: `curl -s http://localhost:8000/health | python3 -m json.tool`
+2. Knowledge base seeded (8 reference docs)
+3. Postgres reachable (for the `backend: postgres` proof in Step 2 and Step 5)
 
 To start from a clean state:
 ```bash
@@ -45,60 +41,51 @@ To start from a clean state:
 
 ## Demo steps
 
-### Step 1: Show DuckDB raw feedback input (LO 1a)
+### Step 1: Show three actual records from the raw landing zone (LO 1a)
 
-**Goal**: Prove source data exists in the deterministic pipeline layer before any LLM processing.
-
-The FastAPI server holds an exclusive lock on the DuckDB file while it runs, so the row counts are read through the `/admin/metrics` endpoint that wraps the same DuckDB query.
+**Goal**: Make the source data concrete — three real customer feedback rows the LLM is about to classify.
 
 ```bash
-curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metrics \
-  --title "DuckDB warehouse row counts (before enrichment)" \
-  --why "Source data is ready; the trusted and quarantine tables are still empty"
+curl -s "http://localhost:8000/admin/raw-feedback?limit=3" | python3 scripts/fmt.py --type raw-rows \
+  --title "raw.feedback — three sample records" \
+  --why "The deterministic source layer the LLM is about to classify"
 ```
 
-**Equivalent direct DuckDB CLI query** (works only when the server is stopped):
+**Expected output**: three rows with `★ id`, customer, product, and the full feedback text. No counts, no metrics — actual records.
+
+**What the learner should notice**: This is what the deterministic pipeline already owns. Three real customer messages — a defective blender, a late delivery, a praise note about customer service. The job is to add an LLM-generated category to each one without ever letting a bad classification reach a trusted table. Everything that follows is the boundary that makes that safe. None of these rows have been touched by an LLM yet.
+
+### Step 2: Show pgvector retrieving grounding sources (LO 1a, 1b)
+
+**Goal**: Prove pgvector is a live retrieval mechanism — not just a table of docs but a similarity search that ranks results.
 
 ```bash
-duckdb data/northwind.duckdb \
-  "SELECT count(*) AS raw_feedback FROM raw.feedback;"
+curl -s "http://localhost:8000/admin/retrieve?q=cracked+lid+blender&top_k=3" | python3 scripts/fmt.py --type retrieve \
+  --title "pgvector similarity search" \
+  --why "Top-3 grounding sources for the LLM, ranked by cosine distance"
 ```
 
-**Expected output**: `raw_feedback: 10`, `trusted_enriched: 0`, `quarantine_outputs: 0`.
+**Expected output**: backend `postgres`, query `"cracked lid blender"`, top_k `3`, then three ★ ranked rows showing `DOC-00X` plus doc_type and title.
 
-**What the learner should notice**: Ten customer feedback records are waiting in the raw landing layer of the warehouse. The trusted analytics table is empty and the quarantine table is empty — no LLM has touched any of this data yet. This is the deterministic source layer the rest of the pipeline depends on. Whatever happens next happens at a boundary we control.
+**What the learner should notice**: The query string is hashed into a 384-dimension vector and compared against eight pre-embedded reference documents in Postgres. The top-3 results come back ordered by cosine distance — product quality first, then return policy, then shipping. This is exactly how the enrichment service picks its source citations. The LLM cannot invent a doc ID; it can only cite the ones pgvector ranks high enough to surface. That is the grounding contract.
 
-### Step 2: Show the pgvector reference documents (LO 1a, 1b)
+### Step 3: Show the JSON contract the LLM must emit (LO 1b)
 
-**Goal**: Prove the LLM is grounded in approved product and policy documents stored in PostgreSQL with pgvector.
-
-```bash
-curl -s "http://localhost:8000/admin/reference-docs?limit=8" | python3 scripts/fmt.py --type refdocs \
-  --title "pgvector reference documents" \
-  --why "Approved policies the LLM is grounded against, stored in Postgres with vector(384) embeddings"
-```
-
-**Expected output**: backend `postgres`, count `8`, `all_embedded: true (all 384-dim)`, then one row per doc with `★ DOC-001 … DOC-008` and its title.
-
-**What the learner should notice**: Eight approved policies — product quality, returns, shipping, merchant guidelines, runbooks, catalog standards — live in PostgreSQL with 384-dimension vector embeddings. When the LLM needs to ground a classification, the service cosine-searches this table. The doc IDs you see here are exactly what the response will cite later as `source_doc_ids`. The LLM cannot cite a document that is not in this approved set, and that constraint is what makes its claims auditable.
-
-### Step 3: Show the JSON contract from Clip 2 (LO 1b)
-
-**Goal**: Show the boundary contract the service is required to emit before we call it for real.
+**Goal**: Show the boundary contract from Clip 2 — schema fields plus the four named validation gates.
 
 ```bash
 curl -s http://localhost:8000/admin/json-contract | python3 scripts/fmt.py --type contract \
   --title "FeedbackEnrichResponse — the boundary contract" \
-  --why "Deterministic pipeline only reads these fields. Free-form LLM text never crosses this line."
+  --why "Deterministic pipeline only reads these fields; four gates run on every response"
 ```
 
-**Expected output**: contract `FeedbackEnrichResponse`, response fields `request_id, category, summary, confidence, source_doc_ids, validation_status`, and the four validation gates ★ highlighted.
+**Expected output**: contract `FeedbackEnrichResponse`, response fields `request_id, category, summary, confidence, source_doc_ids, validation_status`, then the four ★ validation gates (schema, grounding, confidence, source ID).
 
-**What the learner should notice**: This is the contract Clip 2 introduced. Six fields, every one structured. The deterministic pipeline never sees free-form text from the LLM — it only reads from these six slots. The four validation gates on the right are what the service runs against every response before it is allowed to emit `validation_status: accepted`. This is the boundary that lets the rest of the pipeline stay safe no matter what the model says.
+**What the learner should notice**: This is the contract Clip 2 introduced. Six structured fields — no free-form prose ever crosses this line. And below them, the four gates the service runs on every response. Schema, grounding, confidence, and source ID. We're going to see each gate fire in the next two steps. The model can say anything inside this contract; it cannot violate the shape.
 
-### Step 4: Enrich a single feedback record through FastAPI (LO 1a, 1b)
+### Step 4: Run a real feedback record through the LLM boundary (LO 1a, 1b)
 
-**Goal**: Send a real record through the LLM boundary and read every contract field back.
+**Goal**: Trigger the LLM proposal and read every contract field back.
 
 ```bash
 curl -s http://localhost:8000/enrich/feedback \
@@ -108,87 +95,90 @@ curl -s http://localhost:8000/enrich/feedback \
   --why "The LLM proposal: category, confidence, and cited sources"
 ```
 
-**Expected output (all 5 outline-named fields are ★-highlighted)**:
-- ★ request_id: a UUID
-- ★ category: `product_quality`
-- ★ summary: describes the defective blender (cracked lid, grinding noise)
-- ★ confidence: `0.8` (above the 0.75 threshold)
-- ★ source_doc_ids: `["DOC-001", "DOC-002"]`
-- ★ validation_status: `accepted`
+**Expected output (all 5 outline-named fields are ★)**:
+- ★ request_id — a UUID
+- ★ category — `product_quality`
+- ★ summary — describes the blender (cracked lid, grinding noise)
+- ★ confidence — `0.8` (above 0.75)
+- ★ source_doc_ids — `["DOC-001", "DOC-002"]`
+- ★ validation_status — `accepted`
 
-**What the learner should notice**: A real customer record went through the LLM boundary. Every contract field is filled. The category is `product_quality` because the feedback text mentions cracked lid and grinding noise — that is the LLM proposal. Confidence is 0.8, comfortably above the 0.75 threshold. The cited sources are DOC-001 and DOC-002 from the pgvector knowledge base. And `validation_status: accepted` means the four gates we are about to inspect all passed.
+**What the learner should notice**: Step 1's first record just went through the boundary. The category is `product_quality` because the feedback mentions a cracked lid and grinding noise. Confidence is 0.8. The cited sources are DOC-001 and DOC-002 — the same documents pgvector ranked first in Step 2. The pipeline never sees free-form model text — it only reads these six structured fields, and `validation_status: accepted` is the LLM's claim that the four gates we just defined all passed. Next step proves it.
 
-### Step 5: Verify the decision and the four validation gates in llm_decisions (LO 1b, 1d)
+### Step 5: Audit the four validation gates in llm_decisions (LO 1b, 1d)
 
-**Goal**: Prove the decision entered the Postgres metadata store and walk through each of the four gates the outline names.
+**Goal**: Open the durable Postgres audit record and walk through each named gate.
 
 ```bash
 curl -s "http://localhost:8000/admin/llm-decisions?limit=1" | python3 scripts/fmt.py --type decisions \
   --title "Decision record in llm_decisions" \
-  --why "Same request_id as Step 4 plus the four validation checks"
+  --why "Same request_id as Step 4 plus the four named validation checks"
 ```
 
-**Expected output**: A decision record with the same `request_id` from Step 4 and a validation checks block:
-- ★ schema ✓ PASS
-- ★ grounding ✓ PASS
-- ★ confidence ✓ PASS
-- ★ source ID ✓ PASS
-
-**Direct psql proof** (in a second terminal):
+**Direct psql proof** (works while server is up):
 
 ```bash
 docker exec northwind-postgres psql -U northwind -d northwind -c \
   "SELECT request_id, status, validation->'checks' AS checks FROM llm_decisions ORDER BY created_at DESC LIMIT 1;"
 ```
 
-**What the learner should notice**: The `request_id` matches Step 4 exactly — end-to-end traceability from the enrichment call to the durable Postgres record. Walk the four checks. Schema passed because every required field is present. Grounding passed because every `source_doc_id` is in the approved reference set. Confidence passed because 0.8 is above 0.75. And source ID passed because DOC-001 and DOC-002 actually exist in `reference_docs`. Only when all four gates pass does `validation_status` flip to accepted. Weeks from now you can query this table to explain why any record was accepted, retried, or rejected.
+**Expected output**: decision record with the same `request_id` from Step 4 and a validation checks block:
+- ★ schema ✓ PASS
+- ★ grounding ✓ PASS
+- ★ confidence ✓ PASS
+- ★ source ID ✓ PASS
 
-### Step 6: Verify the validated record landed in trusted (LO 1d)
+**What the learner should notice**: This is a row in real Postgres, not a log line. The `request_id` matches Step 4 exactly — that is end-to-end traceability. Walk the four gates. Schema passed because every required field was present. Grounding passed because every cited doc ID is in pgvector. Confidence passed because 0.8 is above 0.75. Source ID passed because the cited docs actually exist. Only when all four passed did the service flip `validation_status` to `accepted`. Six months from now you can query this table to answer "why did record X get accepted" without re-running the model.
 
-**Goal**: Prove the validated LLM output reached the trusted analytical table.
+### Step 6: Show the actual promoted row in the trusted table (LO 1d)
+
+**Goal**: Look at the trusted row itself — not a row count, the row's content.
 
 ```bash
-curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metrics \
-  --title "DuckDB warehouse row counts (after Step 4)" \
-  --why "The validated output was promoted to the trusted table"
+curl -s "http://localhost:8000/admin/trusted-rows?limit=1" | python3 scripts/fmt.py --type trusted-rows \
+  --title "trusted.feedback_enriched — the promoted row" \
+  --why "Validated LLM output is now part of the trusted data product"
 ```
 
-**Equivalent direct DuckDB CLI queries** (server stopped):
+**Equivalent direct DuckDB CLI** (server stopped):
 
 ```bash
 duckdb data/northwind.duckdb \
-  "SELECT count(*) AS trusted_enriched FROM trusted.feedback_enriched;
-   SELECT request_id, category, confidence, validation_status
+  "SELECT request_id, category, confidence, source_doc_ids, validation_status \
    FROM trusted.feedback_enriched ORDER BY enriched_at DESC LIMIT 1;"
 ```
 
-**Expected output**: `trusted_enriched: 1` (grew from 0 to 1); `quarantine_outputs: 0`.
+**Expected output**: one ★ row with `request_id` (matches Step 4), `category=product_quality`, `confidence=0.8`, `source_doc_ids=["DOC-001", "DOC-002"]`, `validation_status=accepted`.
 
-**What the learner should notice**: The trusted analytics table grew from zero to one. That single row is the LLM proposal that survived every gate. Downstream dashboards, customer service routing, executive reports — they all read from this table. The pipeline owner can sleep at night knowing nothing reached `trusted.feedback_enriched` without the full validation chain firing first. This is the design contract: LLM outputs are proposals; trusted tables only ever see validated facts.
+**What the learner should notice**: The trusted analytics table now has a real row. Same `request_id` as Steps 4 and 5 — the chain is complete. The row carries the category, the confidence, the cited sources, and the validation status. Downstream dashboards, customer service routing, executive reports — they all read from this table and they all get a record that the gates approved. The pipeline owner can defend this row in front of any auditor: every field came from a contract, every check is recorded next door in Postgres.
 
-### Step 7: Show what gets quarantined when validation fails (LO 1d)
+### Step 7: Show a failed row and the gate that rejected it (LO 1d)
 
-**Goal**: Prove the gate works in both directions — bad LLM output lands in quarantine, not in trusted.
+**Goal**: Prove the gate works in both directions — bad LLM output goes to quarantine with the failing gate visible.
 
 ```bash
+# First, send an ambiguous record that the LLM cannot classify confidently
 curl -s http://localhost:8000/enrich/feedback \
   -H "Content-Type: application/json" \
-  -d @data/payloads/feedback_ambiguous.json | python3 scripts/fmt.py --type feedback \
-  --title "FastAPI enrichment response — ambiguous record" \
-  --why "Low confidence ⇒ validation fails ⇒ quarantine path"
+  -d @data/payloads/feedback_ambiguous.json > /dev/null
+
+# Then inspect the quarantine table
+curl -s "http://localhost:8000/admin/quarantine-rows?limit=1" | python3 scripts/fmt.py --type quarantine-rows \
+  --title "quarantine.llm_outputs — the failed row" \
+  --why "Failed validation lands here with the specific gate that failed"
 ```
 
-Then show the updated counts:
+**Equivalent direct DuckDB CLI** (server stopped):
 
 ```bash
-curl -s http://localhost:8000/admin/metrics | python3 scripts/fmt.py --type metrics \
-  --title "DuckDB warehouse row counts (after the failed record)" \
-  --why "Trusted stayed at 1; quarantine grew from 0 to 1"
+duckdb data/northwind.duckdb \
+  "SELECT request_id, input_text, raw_output, validation_errors \
+   FROM quarantine.llm_outputs ORDER BY quarantined_at DESC LIMIT 1;"
 ```
 
-**Expected output**: response shows `★ confidence: 0.5`, `★ validation_status: failed`. Metrics show `trusted_enriched: 1` (unchanged) and `quarantine_outputs: 1` (grew).
+**Expected output**: one quarantine row showing the input text, the LLM's proposal (`category=general_praise`, `confidence=0.55`), and the per-gate result with `✗ confidence: Confidence 0.55 below threshold 0.75` clearly marked.
 
-**What the learner should notice**: This is the negative case the outline asks for. We sent an ambiguous record — text the LLM cannot confidently classify. The model came back with confidence 0.5, well below the 0.75 threshold, so the confidence gate failed and `validation_status` is `failed`. Look at the counts: `trusted_enriched` is still one — the record never reached the analytics table. Instead it landed in `quarantine.llm_outputs` with the validation errors recorded next to the raw output. In a real pipeline, a human reviews quarantine rows, or they get retried with a stronger prompt, or they get dropped. They never silently pollute downstream analytics. That is the difference between a pipeline that benefits from LLMs and one that gets corrupted by them.
+**What the learner should notice**: This is the negative case the outline calls for. We sent an ambiguous record — text the LLM has no strong keywords for. The model came back with a default category and confidence 0.55, below our 0.75 threshold. So the confidence gate failed, and you can see exactly which gate failed in the `validation_errors` column. The trusted table did not grow. Instead the row sits in `quarantine.llm_outputs` with the input, the raw model proposal, and the specific reason — ready for a human to review, retry with a stronger prompt, or drop. The pipeline owner sleeps at night because failures are visible, debuggable, and isolated from the trusted data product.
 
 ## Best-practice callout
 
@@ -198,13 +188,11 @@ LLM outputs are proposals until validation promotes them to trusted data. When v
 
 ## Preflight check
 
-Before running the demo, execute the preflight script to verify all steps produce correct output:
-
 ```bash
 module1/scripts/preflight_check.sh
 ```
 
-This runs every demo step, captures commands and output, maps each step to its learning objective, and saves the log to `module1/preflight_log.txt`. Use this log to verify that demo steps align with the learning objectives.
+Runs every step above, captures each command and its output, maps each step to its LO, and writes the log to `module1/preflight_log.txt` so you can confirm alignment with the outline before recording.
 
 ## Cleanup
 
@@ -214,11 +202,12 @@ This runs every demo step, captures commands and output, maps each step to its l
 
 ## Key files
 
-- `app/routers/enrichment.py` — Feedback enrichment endpoint with trusted/quarantine routing
-- `app/services/llm_stub.py` — Deterministic LLM stub (keyword-based, reproducible)
-- `app/validators/output_validator.py` — Schema, grounding, confidence, source-ID checks
-- `app/db/pgvector.py` — Reference document retrieval via real pgvector
-- `data/payloads/feedback_enrich.json` — Defective blender (accepted path)
-- `data/payloads/feedback_ambiguous.json` — Ambiguous text (quarantine path)
-- `data/seed/feedback.json` — Seed data (10 records)
+- `app/routers/enrichment.py` — `/enrich/feedback` with trusted/quarantine routing
+- `app/db/duckdb_client.py` — `fetch_all_feedback`, `fetch_trusted_rows`, `fetch_quarantine_rows`
+- `app/db/pgvector.py` — pgvector retrieval used in Steps 2 and 4
+- `app/validators/output_validator.py` — the four gates: schema, grounding, confidence, source ID
+- `app/services/llm_stub.py` — deterministic LLM stub
+- `data/payloads/feedback_enrich.json` — defective blender (accepted path)
+- `data/payloads/feedback_ambiguous.json` — ambiguous text (quarantine path)
+- `data/seed/feedback.json` — 10 raw feedback records
 - `data/seed/reference_docs.json` — 8 approved reference documents

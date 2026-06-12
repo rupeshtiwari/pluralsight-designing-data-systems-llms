@@ -916,6 +916,106 @@ def fmt_raw(data: dict) -> str:
     return "\n".join(lines)
 
 
+def fmt_raw_rows(data: dict) -> str:
+    """Module 1 Step 1 — sample rows from raw.feedback (DuckDB)."""
+    lines: list[str] = []
+    lines.extend(_maybe_heading("raw.feedback sample"))
+    rows = data.get("rows", []) or []
+    lines.append(_hi("rows shown", str(len(rows))))
+    lines.append("")
+    for r in rows:
+        rid = str(r.get("id"))
+        cust = str(r.get("customer_id", ""))
+        prod = str(r.get("product_id", ""))
+        text = str(r.get("feedback_text", ""))
+        lines.append(f"  {PINK}★{RESET} {BLUE}id:{RESET} {LGRN}{rid}{RESET}  "
+                     f"{BLUE}customer:{RESET} {LGRN}{cust}{RESET}  "
+                     f"{BLUE}product:{RESET} {LGRN}{prod}{RESET}")
+        lines.append(f"      {GRAY}\"{text}\"{RESET}")
+    return "\n".join(lines)
+
+
+def fmt_trusted_rows(data: dict) -> str:
+    """Module 1 Step 6 — sample rows from trusted.feedback_enriched."""
+    lines: list[str] = []
+    lines.extend(_maybe_heading("trusted.feedback_enriched sample"))
+    rows = data.get("rows", []) or []
+    lines.append(_hi("rows in trusted", str(len(rows))))
+    lines.append("")
+    for r in rows:
+        rid = str(r.get("request_id", ""))
+        cat = str(r.get("category", ""))
+        conf = r.get("confidence")
+        srcs = r.get("source_doc_ids") or []
+        status = str(r.get("validation_status", ""))
+        if isinstance(srcs, str):
+            srcs_str = srcs
+        else:
+            srcs_str = ", ".join(str(s) for s in srcs)
+        lines.append(f"  {PINK}★{RESET} {BLUE}request_id:{RESET} {LGRN}{rid}{RESET}")
+        lines.append(f"      {PINK}★{RESET} {BLUE}category:{RESET} {LGRN}{cat}{RESET}  "
+                     f"{BLUE}confidence:{RESET} {LGRN}{conf}{RESET}")
+        lines.append(f"      {PINK}★{RESET} {BLUE}source_doc_ids:{RESET} {LGRN}{srcs_str}{RESET}")
+        lines.append(f"      {PINK}★{RESET} {BLUE}validation_status:{RESET} {LGRN}{status}{RESET}")
+    return "\n".join(lines)
+
+
+def fmt_quarantine_rows(data: dict) -> str:
+    """Module 1 Step 7 — sample rows from quarantine.llm_outputs with errors."""
+    lines: list[str] = []
+    lines.extend(_maybe_heading("quarantine.llm_outputs sample"))
+    rows = data.get("rows", []) or []
+    lines.append(_hi("rows in quarantine", str(len(rows))))
+    lines.append("")
+    for r in rows:
+        rid = str(r.get("request_id", ""))
+        text = str(r.get("input_text", ""))
+        raw_out = r.get("raw_output") or {}
+        errors = r.get("validation_errors") or {}
+        conf = raw_out.get("confidence") if isinstance(raw_out, dict) else None
+        cat = raw_out.get("category") if isinstance(raw_out, dict) else None
+        lines.append(f"  {PINK}★{RESET} {BLUE}request_id:{RESET} {LGRN}{rid}{RESET}")
+        lines.append(f"      {GRAY}input:{RESET} \"{text}\"")
+        lines.append(f"      {BLUE}LLM proposal:{RESET} category={LGRN}{cat}{RESET} "
+                     f"confidence={LGRN}{conf}{RESET}")
+        if isinstance(errors, dict) and errors:
+            lines.append(f"      {PINK}★ failed gate(s):{RESET}")
+            for gate, msg in errors.items():
+                # If msg is structured {"passed": False, "detail": "..."} pick the detail
+                if isinstance(msg, dict):
+                    passed = msg.get("passed", True)
+                    detail = msg.get("detail", "")
+                    mark = f"{LIME}✓{RESET}" if passed else f"{PINK}✗{RESET}"
+                    lines.append(f"        {mark} {BLUE}{gate}:{RESET} {GRAY}{detail}{RESET}")
+                else:
+                    lines.append(f"        {PINK}✗{RESET} {BLUE}{gate}:{RESET} {GRAY}{msg}{RESET}")
+    return "\n".join(lines)
+
+
+def fmt_retrieve(data: dict) -> str:
+    """Module 1 Step 2 — top-k pgvector similarity results."""
+    lines: list[str] = []
+    lines.extend(_maybe_heading("pgvector similarity retrieval"))
+    backend = data.get("backend", "?")
+    query = data.get("query", "")
+    top_k = data.get("top_k", 0)
+    results = data.get("results", []) or []
+    lines.append(_hi("backend", backend))
+    lines.append(_hi("query", f'"{query}"'))
+    lines.append(_hi("top_k", str(top_k)))
+    lines.append("")
+    lines.append(f"  {BLUE}ranked matches (cosine distance ASC):{RESET}")
+    for r in results:
+        rank = r.get("rank", "?")
+        doc_id = r.get("doc_id", "?")
+        title = r.get("title", "")
+        dtype = r.get("doc_type", "")
+        lines.append(f"  {PINK}★{RESET} {LGRN}rank {rank}{RESET}  "
+                     f"{LGRN}{doc_id}{RESET}  "
+                     f"{GRAY}[{dtype}]{RESET}  {title}")
+    return "\n".join(lines)
+
+
 def fmt_contract(data: dict) -> str:
     """Show the FeedbackEnrichResponse JSON contract from Module 1 Step 3.
 
@@ -1054,6 +1154,10 @@ FORMATTERS: dict[str, Any] = {
     "raw": fmt_raw,
     "refdocs": fmt_refdocs,
     "contract": fmt_contract,
+    "raw-rows": fmt_raw_rows,
+    "trusted-rows": fmt_trusted_rows,
+    "quarantine-rows": fmt_quarantine_rows,
+    "retrieve": fmt_retrieve,
 }
 
 

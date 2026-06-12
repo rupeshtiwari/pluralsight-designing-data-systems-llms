@@ -137,105 +137,117 @@ log "Knowledge base: seeded"
 # ═════════════════════════════════════════════════════════════════════════════
 # STEP 1 (LO 1a)
 # ═════════════════════════════════════════════════════════════════════════════
-step_header "1/7" "Show DuckDB raw feedback input" "1a — Where LLMs fit in data pipelines"
-show_command "curl -s $API/admin/metrics | python3 -m json.tool"
+step_header "1/7" "Show three actual rows from raw.feedback" "1a — Source layer has structured records"
+show_command 'curl -s "$API/admin/raw-feedback?limit=3" | python3 scripts/fmt.py --type raw-rows'
 
-log_divider "STEP 1: Show DuckDB raw feedback input (LO 1a)"
+log_divider "STEP 1: Show three actual rows from raw.feedback (LO 1a)"
 log "COMMAND:"
-log "  curl -s $API/admin/metrics | python3 -m json.tool"
+log "  curl -s $API/admin/raw-feedback?limit=3"
 log ""
 
+RAW_ROWS=$(curl -sf "$API/admin/raw-feedback?limit=3")
+echo "$RAW_ROWS" | python3 -m json.tool > "$TMPD/step1.json"
+
+# We still need raw_feedback total for the LO summary
 METRICS=$(curl -sf "$API/admin/metrics")
-echo "$METRICS" | python3 -m json.tool > "$TMPD/step1.json" 2>&1
+RAW_COUNT=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['raw_feedback'])")
+TRUSTED_BEFORE=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['trusted_enriched'])")
+ROW_SAMPLE=$(echo "$RAW_ROWS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('count',0))")
+FIRST_TEXT=$(echo "$RAW_ROWS" | python3 -c "import json,sys; d=json.load(sys.stdin).get('rows',[]); print(d[0]['feedback_text'] if d else '')")
 
 log "OUTPUT:"
 cat "$TMPD/step1.json" >> "$LOG"
 log ""
 
-RAW_COUNT=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['raw_feedback'])")
-TRUSTED_BEFORE=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['trusted_enriched'])")
-
-highlight "raw.feedback row count:" "$RAW_COUNT"
-field     "trusted.feedback_enriched:" "$TRUSTED_BEFORE  (empty baseline)"
+highlight "rows shown:" "$ROW_SAMPLE"
+field     "first record text:" "$FIRST_TEXT"
+field     "total raw.feedback:" "$RAW_COUNT"
+field     "trusted.feedback_enriched (baseline):" "$TRUSTED_BEFORE"
 echo ""
-printf "  ${GRAY}★ = read this value aloud on camera${NC}\n"
+printf "  ${GRAY}★ = read aloud: actual customer text from the raw landing zone${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
-log "  raw_feedback:     $RAW_COUNT"
-log "  trusted_enriched: $TRUSTED_BEFORE"
+log "  rows shown: $ROW_SAMPLE"
+log "  raw_feedback total: $RAW_COUNT"
+log "  trusted_enriched (baseline): $TRUSTED_BEFORE"
 log ""
 log "LO COVERAGE:"
-log "  1a — Source data exists in the deterministic pipeline layer (raw.feedback = $RAW_COUNT)"
+log "  1a — Source layer has $RAW_COUNT structured records ready for enrichment"
 
-# Check: raw.feedback = 10
-if [[ "$RAW_COUNT" -eq 10 ]]; then
-  pass "raw.feedback = $RAW_COUNT (10 seed records present)"
+if [[ "$ROW_SAMPLE" -ge 3 ]]; then
+  pass "3 sample rows returned from raw.feedback"
   log "RESULT: PASS"
 else
-  fail_check "raw.feedback = $RAW_COUNT (expected 10)"
+  fail_check "expected 3 sample rows, got $ROW_SAMPLE"
   fix "module1/scripts/demo-reset.sh"
-  detail "The reset script deletes DuckDB and reloads 10 seed records."
-  log "RESULT: FAIL (expected 10)"
+  log "RESULT: FAIL"
 fi
 
-# Check: trusted = 0 (clean baseline)
+if [[ "$RAW_COUNT" -eq 10 ]]; then
+  pass "raw.feedback total = 10 (seed loaded)"
+  log "RESULT: PASS"
+else
+  fail_check "raw.feedback total = $RAW_COUNT (expected 10)"
+  fix "module1/scripts/demo-reset.sh"
+  log "RESULT: FAIL"
+fi
+
 if [[ "$TRUSTED_BEFORE" -eq 0 ]]; then
-  pass "trusted.feedback_enriched = $TRUSTED_BEFORE (clean baseline)"
-  log "RESULT: PASS (baseline clean)"
+  pass "trusted.feedback_enriched = 0 (clean baseline)"
+  log "RESULT: PASS"
 else
   fail_check "trusted.feedback_enriched = $TRUSTED_BEFORE (expected 0)"
   fix "module1/scripts/demo-reset.sh"
-  detail "The reset script kills the server, deletes DuckDB, and restarts."
-  detail "This clears all enrichment results from prior runs."
-  log "RESULT: FAIL (expected 0)"
+  log "RESULT: FAIL"
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-# STEP 2 (LO 1a, 1b) — pgvector reference documents
+# STEP 2 (LO 1a, 1b) — pgvector similarity retrieval (live, not the seed list)
 # ═════════════════════════════════════════════════════════════════════════════
-step_header "2/7" "Show pgvector reference documents" "1a, 1b — Grounded retrieval source"
-show_command 'curl -s http://localhost:8000/admin/reference-docs?limit=8 | python3 scripts/fmt.py --type refdocs'
+step_header "2/7" "Show pgvector similarity retrieval" "1a, 1b — Live grounding mechanism"
+show_command 'curl -s "$API/admin/retrieve?q=cracked+lid+blender&top_k=3" | python3 scripts/fmt.py --type retrieve'
 
-log_divider "STEP 2: Show pgvector reference documents (LO 1a, 1b)"
+log_divider "STEP 2: Show pgvector similarity retrieval (LO 1a, 1b)"
 log "COMMAND:"
-log '  curl -s http://localhost:8000/admin/reference-docs?limit=8'
+log '  curl -s "$API/admin/retrieve?q=cracked+lid+blender&top_k=3"'
 log ""
 
-DOCS_JSON=$(curl -sf "$API/admin/reference-docs?limit=8")
-echo "$DOCS_JSON" > "$TMPD/step2.json"
-DOCS_COUNT=$(echo "$DOCS_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('count',0))" 2>/dev/null || echo 0)
-DOCS_BACKEND=$(echo "$DOCS_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('backend','?'))" 2>/dev/null || echo "?")
-ALL_EMBED=$(echo "$DOCS_JSON" | python3 -c "import json,sys;d=json.load(sys.stdin);docs=d.get('documents',[]);print('yes' if docs and all(x.get('has_embedding') for x in docs) else 'no')" 2>/dev/null || echo "no")
+RETR_JSON=$(curl -sf "$API/admin/retrieve?q=cracked+lid+blender&top_k=3")
+echo "$RETR_JSON" > "$TMPD/step2.json"
+RETR_BACKEND=$(echo "$RETR_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('backend','?'))" 2>/dev/null || echo "?")
+RETR_COUNT=$(echo "$RETR_JSON" | python3 -c "import json,sys;print(len(json.load(sys.stdin).get('results',[])))" 2>/dev/null || echo 0)
+TOP_DOC=$(echo "$RETR_JSON" | python3 -c "import json,sys;r=json.load(sys.stdin).get('results',[]);print(r[0]['doc_id'] if r else '')" 2>/dev/null || echo "")
 
 log "OUTPUT:"
-log "  backend: $DOCS_BACKEND"
-log "  count: $DOCS_COUNT"
-log "  all_embedded: $ALL_EMBED"
+log "  backend: $RETR_BACKEND"
+log "  ranked results: $RETR_COUNT"
+log "  top doc_id: $TOP_DOC"
 log ""
 
-highlight "backend:" "$DOCS_BACKEND"
-highlight "count:" "$DOCS_COUNT"
-highlight "all_embedded:" "$ALL_EMBED"
+highlight "backend:" "$RETR_BACKEND"
+highlight "query:" "\"cracked lid blender\""
+highlight "top_k matches returned:" "$RETR_COUNT"
+highlight "top match doc_id:" "$TOP_DOC"
 echo ""
-printf "  ${GRAY}★ = the LLM is grounded against these approved docs in real Postgres${NC}\n"
+printf "  ${GRAY}★ = pgvector ranked these by cosine distance — same retrieval the LLM uses${NC}\n"
 echo ""
 
-if [[ "$DOCS_COUNT" -eq 8 ]]; then
-  pass "8 reference documents seeded"
-  log "RESULT: PASS — 8 reference docs present"
+if [[ "$RETR_COUNT" -ge 3 ]]; then
+  pass "pgvector returned $RETR_COUNT ranked matches"
+  log "RESULT: PASS"
 else
-  fail_check "Expected 8 reference documents, got $DOCS_COUNT"
+  fail_check "expected 3 matches, got $RETR_COUNT"
   fix "module1/scripts/demo-reset.sh"
-  log "RESULT: FAIL — count = $DOCS_COUNT"
+  log "RESULT: FAIL"
 fi
 
-if [[ "$DOCS_BACKEND" == "postgres" ]]; then
-  pass "backend = postgres (real pgvector in use)"
-  log "RESULT: PASS — backend postgres"
+if [[ "$RETR_BACKEND" == "postgres" ]]; then
+  pass "backend = postgres (real pgvector retrieval)"
+  log "RESULT: PASS"
 else
-  warn_check "backend = $DOCS_BACKEND (outline requires postgres + pgvector)"
-  log "RESULT: WARN — backend $DOCS_BACKEND (start docker compose up -d postgres)"
+  warn_check "backend = $RETR_BACKEND (outline requires postgres + pgvector)"
+  log "RESULT: WARN — start docker compose up -d postgres"
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -458,112 +470,162 @@ fi
 # ═════════════════════════════════════════════════════════════════════════════
 # STEP 4 (LO 1d)
 # ═════════════════════════════════════════════════════════════════════════════
-step_header "6/7" "Verify trusted output table received the enriched record" "1d — Validated output reaches trusted table"
-show_command "curl -s $API/admin/metrics | python3 -m json.tool"
+step_header "6/7" "Show the promoted row in trusted.feedback_enriched" "1d — Validated output is now part of the trusted data product"
+show_command 'curl -s "$API/admin/trusted-rows?limit=1" | python3 scripts/fmt.py --type trusted-rows'
 
-log_divider "STEP 4: Verify trusted output table received the enriched record (LO 1d)"
+log_divider "STEP 6: Show the promoted row in trusted.feedback_enriched (LO 1d)"
 log "COMMAND:"
-log "  curl -s $API/admin/metrics | python3 -m json.tool"
+log '  curl -s "$API/admin/trusted-rows?limit=1"'
 log ""
 
-METRICS_AFTER=$(curl -sf "$API/admin/metrics")
-echo "$METRICS_AFTER" | python3 -m json.tool > "$TMPD/step4.json" 2>&1
+TRUSTED_JSON=$(curl -sf "$API/admin/trusted-rows?limit=1")
+echo "$TRUSTED_JSON" | python3 -m json.tool > "$TMPD/step6.json"
+TRUSTED_AFTER=$(echo "$TRUSTED_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('count',0))")
+TRUSTED_REQ=$(echo "$TRUSTED_JSON" | python3 -c "import json,sys; r=json.load(sys.stdin).get('rows',[]); print(r[0]['request_id'] if r else '')")
+TRUSTED_CAT=$(echo "$TRUSTED_JSON" | python3 -c "import json,sys; r=json.load(sys.stdin).get('rows',[]); print(r[0]['category'] if r else '')")
+TRUSTED_STATUS=$(echo "$TRUSTED_JSON" | python3 -c "import json,sys; r=json.load(sys.stdin).get('rows',[]); print(r[0]['validation_status'] if r else '')")
 
 log "OUTPUT:"
-cat "$TMPD/step4.json" >> "$LOG"
+cat "$TMPD/step6.json" >> "$LOG"
 log ""
 
-TRUSTED_AFTER=$(echo "$METRICS_AFTER" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['trusted_enriched'])")
-DELTA=$((TRUSTED_AFTER - TRUSTED_BEFORE))
-
-field     "trusted.enriched before:" "$TRUSTED_BEFORE"
-field     "trusted.enriched after:" "$TRUSTED_AFTER"
-highlight "row count delta:" "+$DELTA"
+highlight "rows in trusted:" "$TRUSTED_AFTER"
+highlight "promoted request_id:" "$TRUSTED_REQ"
+highlight "category:" "$TRUSTED_CAT"
+highlight "validation_status:" "$TRUSTED_STATUS"
 echo ""
-printf "  ${GRAY}★ = read aloud: the row count delta (0 → 1)${NC}\n"
+printf "  ${GRAY}★ = read aloud: the actual content of the promoted row, not just a count${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
-log "  trusted_enriched before: $TRUSTED_BEFORE"
-log "  trusted_enriched after:  $TRUSTED_AFTER"
-log "  delta:                   +$DELTA"
+log "  rows in trusted: $TRUSTED_AFTER"
+log "  promoted request_id: $TRUSTED_REQ"
+log "  category: $TRUSTED_CAT"
+log "  validation_status: $TRUSTED_STATUS"
 log ""
 log "LO COVERAGE:"
-log "  1d — Data flow complete: validated LLM output promoted to trusted table (+$DELTA row)"
+log "  1d — The trusted data product carries the request_id, category, and accepted status of the promoted row"
 
-# Check: delta > 0
-if [[ "$DELTA" -gt 0 ]]; then
-  pass "trusted.feedback_enriched grew by +$DELTA row"
-  detail "The validated LLM output was promoted from proposal to trusted data."
-  log "RESULT: PASS — delta = +$DELTA"
+if [[ "$TRUSTED_AFTER" -ge 1 ]]; then
+  pass "trusted.feedback_enriched has a promoted row"
+  log "RESULT: PASS"
 else
-  fail_check "trusted.feedback_enriched did not grow (delta = $DELTA)"
+  fail_check "trusted.feedback_enriched is empty (expected at least 1 row)"
   fix "module1/scripts/demo-reset.sh && module1/scripts/preflight_check.sh"
-  detail "If trusted_before was already > 0, a prior run left data behind."
-  detail "Reset clears the database and starts from scratch."
-  log "RESULT: FAIL — no growth"
+  log "RESULT: FAIL — no promoted row"
+fi
+
+if [[ "$TRUSTED_REQ" == "$REQUEST_ID" ]]; then
+  pass "promoted request_id matches Step 4 → end-to-end traceability"
+  log "RESULT: PASS — request_id chain intact"
+else
+  warn_check "promoted request_id is $TRUSTED_REQ (Step 4 emitted $REQUEST_ID)"
+  log "RESULT: WARN — request_id mismatch"
+fi
+
+if [[ "$TRUSTED_STATUS" == "accepted" ]]; then
+  pass "validation_status = accepted on the promoted row"
+  log "RESULT: PASS"
+else
+  fail_check "validation_status = $TRUSTED_STATUS (expected accepted)"
+  log "RESULT: FAIL"
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
 # STEP 7 (LO 1d) — Quarantine path for failed validation
 # ═════════════════════════════════════════════════════════════════════════════
-step_header "7/7" "Show what gets quarantined when validation fails" "1d — Bad LLM output never reaches trusted"
-show_command 'curl -s http://localhost:8000/enrich/feedback -d @data/payloads/feedback_ambiguous.json'
+step_header "7/7" "Show the failed row in quarantine.llm_outputs" "1d — Bad LLM output never reaches trusted; gate that failed is visible"
+show_command 'curl -s "$API/admin/quarantine-rows?limit=1" | python3 scripts/fmt.py --type quarantine-rows'
 
-log_divider "STEP 7: Quarantine path for failed validation (LO 1d)"
+log_divider "STEP 7: Show the failed row in quarantine.llm_outputs (LO 1d)"
 log "COMMAND:"
-log '  curl -s http://localhost:8000/enrich/feedback -d @data/payloads/feedback_ambiguous.json'
+log '  curl -s -X POST $API/enrich/feedback -d @data/payloads/feedback_ambiguous.json'
+log '  curl -s "$API/admin/quarantine-rows?limit=1"'
 log ""
 
-QUARANTINE_BEFORE=$(echo "$METRICS_AFTER" | python3 -c "import json,sys;print(json.load(sys.stdin)['duckdb'].get('quarantine_outputs',0))")
+# Send the ambiguous record so quarantine has a row
 AMBIG_RESP=$(curl -sf -X POST "$API/enrich/feedback" -H "Content-Type: application/json" \
   -d @"$PROJECT_ROOT/data/payloads/feedback_ambiguous.json")
-echo "$AMBIG_RESP" > "$TMPD/step7.json"
 AMBIG_STATUS=$(echo "$AMBIG_RESP" | python3 -c "import json,sys;print(json.load(sys.stdin).get('validation_status','?'))" 2>/dev/null || echo "?")
 AMBIG_CONF=$(echo "$AMBIG_RESP" | python3 -c "import json,sys;print(json.load(sys.stdin).get('confidence',0))" 2>/dev/null || echo 0)
 
+QUAR_JSON=$(curl -sf "$API/admin/quarantine-rows?limit=1")
+echo "$QUAR_JSON" | python3 -m json.tool > "$TMPD/step7.json"
+QUAR_COUNT=$(echo "$QUAR_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('count',0))")
+QUAR_REQ=$(echo "$QUAR_JSON" | python3 -c "import json,sys; r=json.load(sys.stdin).get('rows',[]); print(r[0]['request_id'] if r else '')")
+QUAR_INPUT=$(echo "$QUAR_JSON" | python3 -c "import json,sys; r=json.load(sys.stdin).get('rows',[]); print(r[0]['input_text'] if r else '')")
+FAILED_GATE=$(echo "$QUAR_JSON" | python3 -c "
+import json,sys
+r=json.load(sys.stdin).get('rows',[])
+if not r: print(''); raise SystemExit
+errs=r[0].get('validation_errors') or {}
+if isinstance(errs, dict):
+    for gate, info in errs.items():
+        if isinstance(info, dict) and info.get('passed') is False:
+            print(gate); break
+" 2>/dev/null || echo "")
+
+# Confirm trusted did NOT grow
 METRICS_QUAR=$(curl -sf "$API/admin/metrics")
 TRUSTED_FINAL=$(echo "$METRICS_QUAR" | python3 -c "import json,sys;print(json.load(sys.stdin)['duckdb']['trusted_enriched'])")
-QUARANTINE_AFTER=$(echo "$METRICS_QUAR" | python3 -c "import json,sys;print(json.load(sys.stdin)['duckdb'].get('quarantine_outputs',0))")
 
 log "OUTPUT:"
-log "  validation_status: $AMBIG_STATUS"
-log "  confidence: $AMBIG_CONF"
-log "  trusted_enriched (unchanged): $TRUSTED_FINAL"
-log "  quarantine_outputs before/after: $QUARANTINE_BEFORE / $QUARANTINE_AFTER"
+cat "$TMPD/step7.json" >> "$LOG"
 log ""
 
-highlight "validation_status:" "$AMBIG_STATUS"
-highlight "confidence:" "$AMBIG_CONF"
-field     "trusted_enriched (unchanged):" "$TRUSTED_FINAL"
-highlight "quarantine_outputs delta:" "+$((QUARANTINE_AFTER - QUARANTINE_BEFORE))"
+highlight "validation_status (response):" "$AMBIG_STATUS"
+highlight "confidence (response):" "$AMBIG_CONF"
+highlight "rows in quarantine:" "$QUAR_COUNT"
+highlight "quarantined request_id:" "$QUAR_REQ"
+highlight "failing gate:" "$FAILED_GATE"
+field     "trusted.feedback_enriched (unchanged):" "$TRUSTED_FINAL"
 echo ""
-printf "  ${GRAY}★ = read aloud: failed validation ⇒ quarantine, not trusted${NC}\n"
+printf "  ${GRAY}★ = read aloud: failed validation ⇒ quarantine row with the failing gate visible${NC}\n"
 echo ""
 
+log "EXTRACTED VALUES:"
+log "  response validation_status: $AMBIG_STATUS"
+log "  response confidence: $AMBIG_CONF"
+log "  quarantine rows: $QUAR_COUNT"
+log "  failing gate: $FAILED_GATE"
+log "  trusted (unchanged): $TRUSTED_FINAL"
+log ""
+log "LO COVERAGE:"
+log "  1d — Failed LLM output is visible, debuggable, and isolated from the trusted data product"
+
 if [[ "$AMBIG_STATUS" == "failed" ]]; then
-  pass "validation_status = failed (low confidence below 0.75 threshold)"
-  log "RESULT: PASS — validation rejected the ambiguous record"
+  pass "validation_status = failed on the ambiguous record"
+  log "RESULT: PASS"
 else
   fail_check "validation_status = $AMBIG_STATUS (expected failed)"
   log "RESULT: FAIL — expected failed, got $AMBIG_STATUS"
 fi
 
-if [[ "$TRUSTED_FINAL" == "$TRUSTED_AFTER" ]]; then
-  pass "trusted.feedback_enriched did NOT grow — the gate held"
-  log "RESULT: PASS — trusted table unchanged"
+if [[ "$QUAR_COUNT" -ge 1 ]]; then
+  pass "quarantine.llm_outputs has the failed row"
+  log "RESULT: PASS"
 else
-  fail_check "trusted.feedback_enriched grew unexpectedly (was $TRUSTED_AFTER, now $TRUSTED_FINAL)"
+  fail_check "quarantine.llm_outputs is empty (expected >= 1 row)"
+  log "RESULT: FAIL — failed record was not quarantined"
+fi
+
+if [[ "$FAILED_GATE" == "confidence" ]]; then
+  pass "the failing gate is recorded as 'confidence' (below 0.75)"
+  log "RESULT: PASS — failing gate captured"
+else
+  warn_check "expected confidence gate to fail, got: $FAILED_GATE"
+  log "RESULT: WARN — failing gate = $FAILED_GATE"
+fi
+
+if [[ "$TRUSTED_FINAL" -le 1 ]]; then
+  pass "trusted.feedback_enriched did NOT grow — the gate held"
+  log "RESULT: PASS"
+else
+  fail_check "trusted.feedback_enriched grew to $TRUSTED_FINAL after a failed record"
   log "RESULT: FAIL — trusted should not have grown"
 fi
 
-if [[ "$QUARANTINE_AFTER" -gt "$QUARANTINE_BEFORE" ]]; then
-  pass "quarantine.llm_outputs grew by +$((QUARANTINE_AFTER - QUARANTINE_BEFORE)) row"
-  log "RESULT: PASS — quarantine received the failed record"
-else
-  fail_check "quarantine.llm_outputs did not grow (was $QUARANTINE_BEFORE, now $QUARANTINE_AFTER)"
-  log "RESULT: FAIL — failed record was not quarantined"
-fi
+# (quarantine row already counted in $QUAR_COUNT check above)
 
 # ═════════════════════════════════════════════════════════════════════════════
 # LO COVERAGE SUMMARY

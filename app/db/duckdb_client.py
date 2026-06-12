@@ -291,6 +291,73 @@ def fetch_all_feedback(limit: int = 100) -> list[dict]:
     ]
 
 
+def fetch_trusted_rows(limit: int = 3) -> list[dict]:
+    """Return sample rows from trusted.feedback_enriched for on-screen proof."""
+    conn = get_connection()
+    results = conn.execute(
+        """
+        SELECT id, request_id, customer_id, product_id, category,
+               confidence, source_doc_ids, validation_status, enriched_at
+        FROM trusted.feedback_enriched
+        ORDER BY enriched_at DESC
+        LIMIT ?
+        """,
+        [limit],
+    ).fetchall()
+    return [
+        {
+            "id": r[0],
+            "request_id": r[1],
+            "customer_id": r[2],
+            "product_id": r[3],
+            "category": r[4],
+            "confidence": r[5],
+            "source_doc_ids": r[6],
+            "validation_status": r[7],
+            "enriched_at": str(r[8]),
+        }
+        for r in results
+    ]
+
+
+def fetch_quarantine_rows(limit: int = 3) -> list[dict]:
+    """Return sample rows from quarantine.llm_outputs for on-screen proof."""
+    conn = get_connection()
+    results = conn.execute(
+        """
+        SELECT id, request_id, input_text, raw_output, validation_errors,
+               quarantined_at
+        FROM quarantine.llm_outputs
+        ORDER BY quarantined_at DESC
+        LIMIT ?
+        """,
+        [limit],
+    ).fetchall()
+    out: list[dict] = []
+    for r in results:
+        raw_output = r[3]
+        validation_errors = r[4]
+        if isinstance(raw_output, str):
+            try:
+                raw_output = json.loads(raw_output)
+            except Exception:
+                pass
+        if isinstance(validation_errors, str):
+            try:
+                validation_errors = json.loads(validation_errors)
+            except Exception:
+                pass
+        out.append({
+            "id": r[0],
+            "request_id": r[1],
+            "input_text": r[2],
+            "raw_output": raw_output,
+            "validation_errors": validation_errors,
+            "quarantined_at": str(r[5]),
+        })
+    return out
+
+
 def customer_exists(customer_id: int) -> bool:
     conn = get_connection()
     result = conn.execute(
