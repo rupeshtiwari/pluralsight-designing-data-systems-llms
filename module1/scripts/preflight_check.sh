@@ -426,7 +426,7 @@ highlight "status:" "$DEC_STATUS"
 field     "endpoint:" "$DEC_ENDPOINT"
 field     "tokens:" "$DEC_TOKENS"
 echo ""
-printf "  ${GRAY}★ = read aloud: request_id (matches Step 2) and status${NC}\n"
+printf "  ${GRAY}★ = read aloud: request_id (matches Step 4) and status${NC}\n"
 echo ""
 
 log "EXTRACTED VALUES:"
@@ -439,12 +439,12 @@ log "LO COVERAGE:"
 log "  1b — System boundary: every LLM call creates a traceable decision record"
 log "  1d — Data flow: request_id links enrichment output to decision store"
 
-# Check: request_id matches Step 2
+# Check: request_id matches Step 4
 if [[ "$DEC_REQ_ID" == "$REQUEST_ID" ]]; then
-  pass "request_id matches Step 2 → end-to-end traceability confirmed"
-  detail "Step 2 request_id: $REQUEST_ID"
-  detail "Step 3 request_id: $DEC_REQ_ID"
-  log "RESULT: PASS — request_id $DEC_REQ_ID matches Step 2"
+  pass "request_id matches Step 4 → end-to-end traceability confirmed"
+  detail "Step 4 request_id: $REQUEST_ID"
+  detail "Step 5 request_id: $DEC_REQ_ID"
+  log "RESULT: PASS — request_id $DEC_REQ_ID matches Step 4"
 else
   fail_check "request_id mismatch"
   detail "Step 2 returned: $REQUEST_ID"
