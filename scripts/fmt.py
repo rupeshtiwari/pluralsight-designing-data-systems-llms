@@ -916,6 +916,43 @@ def fmt_raw(data: dict) -> str:
     return "\n".join(lines)
 
 
+def fmt_contract(data: dict) -> str:
+    """Show the FeedbackEnrichResponse JSON contract from Module 1 Step 3.
+
+    Highlights the six required response fields plus the four validation
+    gates the outline names. The full nested JSON schema is hidden behind
+    a single 'fields: ...' line so the on-screen output fits one screen.
+    """
+    lines: list[str] = []
+    lines.extend(_maybe_heading("FeedbackEnrichResponse JSON contract"))
+
+    name = data.get("contract_name", "")
+    purpose = data.get("purpose", "")
+    response_schema = data.get("response_schema") or {}
+    request_schema = data.get("request_schema") or {}
+    gates = data.get("validation_gates") or []
+
+    if name:
+        lines.append(_hi("contract", name))
+    if purpose:
+        lines.append(_hi("purpose", purpose))
+
+    request_fields = list((request_schema.get("properties") or {}).keys())
+    response_fields = list((response_schema.get("properties") or {}).keys())
+    if request_fields:
+        lines.append(_hi("request fields", ", ".join(request_fields)))
+    if response_fields:
+        lines.append(_hi("response fields", ", ".join(response_fields)))
+
+    if gates:
+        lines.append("")
+        lines.append(f"  {BLUE}validation gates (run on every response):{RESET}")
+        for g in gates:
+            lines.append(f"  {PINK}★{RESET} {LGRN}{g}{RESET}")
+
+    return "\n".join(lines)
+
+
 def fmt_refdocs(data: dict) -> str:
     """Compact one-screen view of pgvector reference docs (Module 1 Step 1b).
 
@@ -1016,6 +1053,7 @@ FORMATTERS: dict[str, Any] = {
     "metrics": fmt_metrics,
     "raw": fmt_raw,
     "refdocs": fmt_refdocs,
+    "contract": fmt_contract,
 }
 
 

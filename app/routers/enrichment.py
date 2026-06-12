@@ -111,6 +111,17 @@ async def enrich_feedback(req: FeedbackEnrichRequest) -> FeedbackEnrichResponse:
             "source_doc_ids": source_doc_ids,
             "validation_status": validation_status,
         })
+    else:
+        # Failed validation lands in quarantine — trusted tables stay clean.
+        # The DuckDB quarantine.llm_outputs row keeps the full LLM proposal
+        # plus the validation errors so the failure is debuggable later.
+        duckdb_client.insert_quarantine({
+            "id": req.feedback_id,
+            "request_id": request_id,
+            "input_text": req.feedback_text,
+            "raw_output": llm_output,
+            "validation_errors": validation.get("checks", {}),
+        })
 
     log.info(
         "enrich.feedback.done",

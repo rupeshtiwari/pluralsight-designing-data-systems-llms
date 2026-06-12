@@ -48,6 +48,9 @@ detail() {
 fix() {
   printf "    ${BLUE}→ Fix:${NC} %s\n" "$1"
 }
+warn_check() {
+  printf "  ${BLUE}⚠ NOTE${NC}  %s\n" "$1"
+}
 step_header() {
   echo ""
   printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
@@ -134,7 +137,7 @@ log "Knowledge base: seeded"
 # ═════════════════════════════════════════════════════════════════════════════
 # STEP 1 (LO 1a)
 # ═════════════════════════════════════════════════════════════════════════════
-step_header "1/4" "Show DuckDB raw feedback input" "1a — Where LLMs fit in data pipelines"
+step_header "1/7" "Show DuckDB raw feedback input" "1a — Where LLMs fit in data pipelines"
 show_command "curl -s $API/admin/metrics | python3 -m json.tool"
 
 log_divider "STEP 1: Show DuckDB raw feedback input (LO 1a)"
@@ -189,9 +192,100 @@ else
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-# STEP 2 (LO 1a, 1b)
+# STEP 2 (LO 1a, 1b) — pgvector reference documents
 # ═════════════════════════════════════════════════════════════════════════════
-step_header "2/4" "Enrich a single feedback record through FastAPI" "1a, 1b — LLM boundary and contract"
+step_header "2/7" "Show pgvector reference documents" "1a, 1b — Grounded retrieval source"
+show_command 'curl -s http://localhost:8000/admin/reference-docs?limit=8 | python3 scripts/fmt.py --type refdocs'
+
+log_divider "STEP 2: Show pgvector reference documents (LO 1a, 1b)"
+log "COMMAND:"
+log '  curl -s http://localhost:8000/admin/reference-docs?limit=8'
+log ""
+
+DOCS_JSON=$(curl -sf "$API/admin/reference-docs?limit=8")
+echo "$DOCS_JSON" > "$TMPD/step2.json"
+DOCS_COUNT=$(echo "$DOCS_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('count',0))" 2>/dev/null || echo 0)
+DOCS_BACKEND=$(echo "$DOCS_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('backend','?'))" 2>/dev/null || echo "?")
+ALL_EMBED=$(echo "$DOCS_JSON" | python3 -c "import json,sys;d=json.load(sys.stdin);docs=d.get('documents',[]);print('yes' if docs and all(x.get('has_embedding') for x in docs) else 'no')" 2>/dev/null || echo "no")
+
+log "OUTPUT:"
+log "  backend: $DOCS_BACKEND"
+log "  count: $DOCS_COUNT"
+log "  all_embedded: $ALL_EMBED"
+log ""
+
+highlight "backend:" "$DOCS_BACKEND"
+highlight "count:" "$DOCS_COUNT"
+highlight "all_embedded:" "$ALL_EMBED"
+echo ""
+printf "  ${GRAY}★ = the LLM is grounded against these approved docs in real Postgres${NC}\n"
+echo ""
+
+if [[ "$DOCS_COUNT" -eq 8 ]]; then
+  pass "8 reference documents seeded"
+  log "RESULT: PASS — 8 reference docs present"
+else
+  fail_check "Expected 8 reference documents, got $DOCS_COUNT"
+  fix "module1/scripts/demo-reset.sh"
+  log "RESULT: FAIL — count = $DOCS_COUNT"
+fi
+
+if [[ "$DOCS_BACKEND" == "postgres" ]]; then
+  pass "backend = postgres (real pgvector in use)"
+  log "RESULT: PASS — backend postgres"
+else
+  warn_check "backend = $DOCS_BACKEND (outline requires postgres + pgvector)"
+  log "RESULT: WARN — backend $DOCS_BACKEND (start docker compose up -d postgres)"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+# STEP 3 (LO 1b) — JSON contract from Clip 2
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "3/7" "Show the JSON contract from Clip 2" "1b — Boundary between deterministic and AI"
+show_command 'curl -s http://localhost:8000/admin/json-contract | python3 scripts/fmt.py --type contract'
+
+log_divider "STEP 3: Show the JSON contract from Clip 2 (LO 1b)"
+log "COMMAND:"
+log '  curl -s http://localhost:8000/admin/json-contract'
+log ""
+
+CONTRACT_JSON=$(curl -sf "$API/admin/json-contract")
+echo "$CONTRACT_JSON" > "$TMPD/step3.json"
+RESP_FIELDS=$(echo "$CONTRACT_JSON" | python3 -c "import json,sys;print(','.join(list((json.load(sys.stdin).get('response_schema') or {}).get('properties',{}).keys())))" 2>/dev/null || echo "")
+GATE_COUNT=$(echo "$CONTRACT_JSON" | python3 -c "import json,sys;print(len(json.load(sys.stdin).get('validation_gates',[])))" 2>/dev/null || echo 0)
+
+log "OUTPUT:"
+log "  response_fields: $RESP_FIELDS"
+log "  validation_gates: $GATE_COUNT"
+log ""
+
+highlight "response fields:" "$RESP_FIELDS"
+highlight "validation gates:" "$GATE_COUNT"
+echo ""
+printf "  ${GRAY}★ = the deterministic pipeline only reads these fields; gates run on every response${NC}\n"
+echo ""
+
+if [[ "$RESP_FIELDS" == *"request_id"* && "$RESP_FIELDS" == *"source_doc_ids"* && "$RESP_FIELDS" == *"validation_status"* ]]; then
+  pass "contract carries every outline-named field"
+  log "RESULT: PASS — contract has request_id, source_doc_ids, validation_status"
+else
+  fail_check "contract missing required fields (got: $RESP_FIELDS)"
+  fix "module1/scripts/demo-reset.sh"
+  log "RESULT: FAIL — fields = $RESP_FIELDS"
+fi
+
+if [[ "$GATE_COUNT" -eq 4 ]]; then
+  pass "all four validation gates declared in the contract"
+  log "RESULT: PASS — 4 gates"
+else
+  fail_check "expected 4 validation gates, got $GATE_COUNT"
+  log "RESULT: FAIL — gate count = $GATE_COUNT"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+# STEP 4 (LO 1a, 1b) — enrich one feedback record
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "4/7" "Enrich a single feedback record through FastAPI" "1a, 1b — LLM boundary and contract"
 show_command 'curl -s http://localhost:8000/enrich/feedback -H "Content-Type: application/json" -d @data/payloads/feedback_enrich.json'
 
 log_divider "STEP 2: Enrich a single feedback record through FastAPI (LO 1a, 1b)"
@@ -295,7 +389,7 @@ fi
 # ═════════════════════════════════════════════════════════════════════════════
 # STEP 3 (LO 1b, 1d)
 # ═════════════════════════════════════════════════════════════════════════════
-step_header "3/4" "Verify the decision was stored in llm_decisions" "1b, 1d — Traceability and data flow"
+step_header "5/7" "Verify the decision was stored in llm_decisions" "1b, 1d — Traceability and data flow"
 show_command "curl -s $API/admin/llm-decisions?limit=1 | python3 -m json.tool"
 
 log_divider "STEP 3: Verify the decision was stored in llm_decisions (LO 1b, 1d)"
@@ -364,7 +458,7 @@ fi
 # ═════════════════════════════════════════════════════════════════════════════
 # STEP 4 (LO 1d)
 # ═════════════════════════════════════════════════════════════════════════════
-step_header "4/4" "Verify trusted output table received the enriched record" "1d — Validated output reaches trusted table"
+step_header "6/7" "Verify trusted output table received the enriched record" "1d — Validated output reaches trusted table"
 show_command "curl -s $API/admin/metrics | python3 -m json.tool"
 
 log_divider "STEP 4: Verify trusted output table received the enriched record (LO 1d)"
@@ -411,26 +505,87 @@ else
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
+# STEP 7 (LO 1d) — Quarantine path for failed validation
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "7/7" "Show what gets quarantined when validation fails" "1d — Bad LLM output never reaches trusted"
+show_command 'curl -s http://localhost:8000/enrich/feedback -d @data/payloads/feedback_ambiguous.json'
+
+log_divider "STEP 7: Quarantine path for failed validation (LO 1d)"
+log "COMMAND:"
+log '  curl -s http://localhost:8000/enrich/feedback -d @data/payloads/feedback_ambiguous.json'
+log ""
+
+QUARANTINE_BEFORE=$(echo "$METRICS_AFTER" | python3 -c "import json,sys;print(json.load(sys.stdin)['duckdb'].get('quarantine_outputs',0))")
+AMBIG_RESP=$(curl -sf -X POST "$API/enrich/feedback" -H "Content-Type: application/json" \
+  -d @"$PROJECT_ROOT/data/payloads/feedback_ambiguous.json")
+echo "$AMBIG_RESP" > "$TMPD/step7.json"
+AMBIG_STATUS=$(echo "$AMBIG_RESP" | python3 -c "import json,sys;print(json.load(sys.stdin).get('validation_status','?'))" 2>/dev/null || echo "?")
+AMBIG_CONF=$(echo "$AMBIG_RESP" | python3 -c "import json,sys;print(json.load(sys.stdin).get('confidence',0))" 2>/dev/null || echo 0)
+
+METRICS_QUAR=$(curl -sf "$API/admin/metrics")
+TRUSTED_FINAL=$(echo "$METRICS_QUAR" | python3 -c "import json,sys;print(json.load(sys.stdin)['duckdb']['trusted_enriched'])")
+QUARANTINE_AFTER=$(echo "$METRICS_QUAR" | python3 -c "import json,sys;print(json.load(sys.stdin)['duckdb'].get('quarantine_outputs',0))")
+
+log "OUTPUT:"
+log "  validation_status: $AMBIG_STATUS"
+log "  confidence: $AMBIG_CONF"
+log "  trusted_enriched (unchanged): $TRUSTED_FINAL"
+log "  quarantine_outputs before/after: $QUARANTINE_BEFORE / $QUARANTINE_AFTER"
+log ""
+
+highlight "validation_status:" "$AMBIG_STATUS"
+highlight "confidence:" "$AMBIG_CONF"
+field     "trusted_enriched (unchanged):" "$TRUSTED_FINAL"
+highlight "quarantine_outputs delta:" "+$((QUARANTINE_AFTER - QUARANTINE_BEFORE))"
+echo ""
+printf "  ${GRAY}★ = read aloud: failed validation ⇒ quarantine, not trusted${NC}\n"
+echo ""
+
+if [[ "$AMBIG_STATUS" == "failed" ]]; then
+  pass "validation_status = failed (low confidence below 0.75 threshold)"
+  log "RESULT: PASS — validation rejected the ambiguous record"
+else
+  fail_check "validation_status = $AMBIG_STATUS (expected failed)"
+  log "RESULT: FAIL — expected failed, got $AMBIG_STATUS"
+fi
+
+if [[ "$TRUSTED_FINAL" == "$TRUSTED_AFTER" ]]; then
+  pass "trusted.feedback_enriched did NOT grow — the gate held"
+  log "RESULT: PASS — trusted table unchanged"
+else
+  fail_check "trusted.feedback_enriched grew unexpectedly (was $TRUSTED_AFTER, now $TRUSTED_FINAL)"
+  log "RESULT: FAIL — trusted should not have grown"
+fi
+
+if [[ "$QUARANTINE_AFTER" -gt "$QUARANTINE_BEFORE" ]]; then
+  pass "quarantine.llm_outputs grew by +$((QUARANTINE_AFTER - QUARANTINE_BEFORE)) row"
+  log "RESULT: PASS — quarantine received the failed record"
+else
+  fail_check "quarantine.llm_outputs did not grow (was $QUARANTINE_BEFORE, now $QUARANTINE_AFTER)"
+  log "RESULT: FAIL — failed record was not quarantined"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
 # LO COVERAGE SUMMARY
 # ═════════════════════════════════════════════════════════════════════════════
 log_divider "LEARNING OBJECTIVE COVERAGE SUMMARY"
 
 log "| LO | Covered in | Proof |"
 log "|----|------------|-------|"
-log "| 1a | Step 1, Step 2 | raw.feedback=$RAW_COUNT shows source data; enrichment classifies as product_quality |"
-log "| 1b | Step 2, Step 3 | Structured JSON contract with validation; traceable decision record |"
-log "| 1d | Step 3, Step 4 | request_id links enrichment to decision; trusted table grew by +$DELTA |"
+log "| 1a | Steps 1, 2, 4 | raw.feedback=$RAW_COUNT + pgvector docs + LLM classification |"
+log "| 1b | Steps 2, 3, 4, 5 | pgvector grounding + JSON contract + structured response + four gates |"
+log "| 1d | Steps 5, 6, 7 | Decision traceability + trusted table promotion + quarantine on failure |"
 log ""
-log "All 3 learning objectives (1a, 1b, 1d) are covered by the 4 demo steps."
+log "All 3 learning objectives (1a, 1b, 1d) are covered by the 7 demo steps."
 
 echo ""
 printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 printf "${BOLD}  LO COVERAGE${NC}\n"
 printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 echo ""
-printf "  ${BLUE}1a${NC}  Steps 1, 2  ${DIM}Source data + LLM classification${NC}\n"
-printf "  ${BLUE}1b${NC}  Steps 2, 3  ${DIM}Boundary contract + traceable decision${NC}\n"
-printf "  ${BLUE}1d${NC}  Steps 3, 4  ${DIM}Decision traceability + trusted table promotion${NC}\n"
+printf "  ${BLUE}1a${NC}  Steps 1, 2, 4     ${DIM}Source data + grounding source + LLM classification${NC}\n"
+printf "  ${BLUE}1b${NC}  Steps 2, 3, 4, 5  ${DIM}Grounding + JSON contract + structured response + four gates${NC}\n"
+printf "  ${BLUE}1d${NC}  Steps 5, 6, 7     ${DIM}Traceability + trusted table promotion + quarantine on failure${NC}\n"
 
 # ═════════════════════════════════════════════════════════════════════════════
 # VERDICT

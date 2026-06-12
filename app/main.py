@@ -116,6 +116,29 @@ async def seed_knowledge_base() -> dict:
     }
 
 
+@app.get("/admin/json-contract")
+async def get_json_contract() -> dict:
+    """Return the FeedbackEnrichResponse JSON contract introduced in Clip 2.
+
+    The deterministic pipeline never sees free-form LLM text — it only
+    sees this shape. The Module 1 demo uses this endpoint to show the
+    boundary contract on screen before calling the enrich endpoint.
+    """
+    from app.models.schemas import FeedbackEnrichResponse, FeedbackEnrichRequest
+    return {
+        "contract_name": "FeedbackEnrichResponse",
+        "purpose": "LLM proposal contract — deterministic pipeline only reads these fields",
+        "request_schema": FeedbackEnrichRequest.model_json_schema(),
+        "response_schema": FeedbackEnrichResponse.model_json_schema(),
+        "validation_gates": [
+            "schema (required fields present)",
+            "grounding (every source_doc_id in approved set)",
+            "confidence (>= 0.75 threshold)",
+            "source ID (cited docs exist in reference_docs)",
+        ],
+    }
+
+
 @app.get("/admin/reference-docs")
 async def list_reference_docs(limit: int = 20) -> dict:
     """List the pgvector-seeded reference documents (Module 1 proof point)."""
