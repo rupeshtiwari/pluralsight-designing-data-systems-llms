@@ -445,16 +445,28 @@ def fmt_triage(data: dict) -> str:
 def fmt_mermaid(data: dict) -> str:
     """One-screen summary of the LangGraph topology.
 
-    By default we hide the raw Mermaid source (~20 lines, not narrated)
-    and surface only the fields the narration reads aloud: the four
-    outline-named nodes and the active path. Pass --show-mermaid to also
-    print the raw source verbatim for the developer-facing dump.
+    Two distinct views from one formatter so Step 1 and Step 2b of the
+    Module 2 demo show different things on camera:
+
+    - Topology view (no active_path): node count + edge count + the four
+      outline-named nodes ★ + the conditional edge call-out. Focuses on
+      the bounded structure of the graph.
+    - Path view (active_path present): ordered traversal of the nodes
+      that actually executed during the run, numbered with arrows, plus
+      a one-line note that the Mermaid classDef styles them in the
+      diagram. Focuses on execution evidence, not structure.
+
+    The raw Mermaid source stays hidden by default; --show-mermaid
+    prints it for the developer-facing dump.
     """
     lines: list[str] = []
     lines.extend(_maybe_heading("LangGraph topology"))
 
     mermaid_src = data.get("mermaid", "")
     active = data.get("active_node", "")
+    active_path = data.get("active_path") or []
+    nodes = data.get("nodes", []) or []
+    edges = data.get("edges", []) or []
 
     # Tell the audience where the diagram comes from, without dumping it.
     if mermaid_src:
@@ -473,30 +485,39 @@ def fmt_mermaid(data: dict) -> str:
         lines.append(f"{DIM}--- end ---{RESET}")
         lines.append("")
 
-    nodes = data.get("nodes", []) or []
-    if nodes:
-        lines.append(f"  {BLUE}nodes:{RESET}")
-        # The four nodes the outline names must be starred
-        outline = {"inspect_metadata", "retrieve_runbook", "recommend_action", "approval_gate"}
-        for n in nodes:
-            if _should_star(n, n in outline):
-                lines.append(f"  {PINK}★{RESET} {LGRN}{n}{RESET}")
-            else:
-                lines.append(f"    {GRAY}{n}{RESET}")
-
-    if active:
-        lines.append("")
-        lines.append(f"  {PINK}★ active node:{RESET} {LGRN}{active}{RESET}")
-
-    active_path = data.get("active_path") or []
     if active_path:
+        # PATH VIEW — Step 2b
+        lines.append(f"  {BLUE}execution path (ordered):{RESET}")
+        for i, n in enumerate(active_path, 1):
+            lines.append(f"  {PINK}★{RESET} {LGRN}{i}.{RESET} "
+                         f"{LIME}✓{RESET} {LGRN}{n}{RESET}")
         lines.append("")
         path_str = " → ".join(active_path)
         lines.append(f"  {PINK}★ active path:{RESET} {LGRN}{path_str}{RESET}")
         lines.append(
-            f"  {DIM}(classDef 'active' in the Mermaid source above "
-            f"highlights these nodes in green){RESET}"
+            f"  {DIM}(Mermaid classDef 'active' styles these nodes "
+            f"in green in the rendered diagram){RESET}"
         )
+    else:
+        # TOPOLOGY VIEW — Step 1
+        conditional_edges = sum(1 for e in edges if e.get("conditional"))
+        lines.append(f"  {PINK}★ nodes:{RESET} {LGRN}{len(nodes)}{RESET}  "
+                     f"{PINK}★ edges:{RESET} {LGRN}{len(edges)}{RESET}  "
+                     f"{PINK}★ conditional edges:{RESET} {LGRN}{conditional_edges}{RESET}")
+        lines.append("")
+        if nodes:
+            lines.append(f"  {BLUE}outline-named nodes (★) and supporting nodes:{RESET}")
+            outline = {"inspect_metadata", "retrieve_runbook",
+                       "recommend_action", "approval_gate"}
+            for n in nodes:
+                if _should_star(n, n in outline):
+                    lines.append(f"  {PINK}★{RESET} {LGRN}{n}{RESET}")
+                else:
+                    lines.append(f"    {GRAY}{n}{RESET}")
+
+    if active:
+        lines.append("")
+        lines.append(f"  {PINK}★ active node:{RESET} {LGRN}{active}{RESET}")
 
     return "\n".join(lines)
 

@@ -68,7 +68,7 @@ The output also includes `classify_severity` and `auto_log` as context (no ★ �
 python3 -c "from app.services.agent_graph import graph_topology; print(graph_topology()['mermaid'])"
 ```
 
-**What the learner should notice**: Every transition is explicit. The diagram is generated from the compiled `StateGraph`, so it can never drift from the code.
+**What the learner should notice**: This is a bounded workflow. Six nodes, nine edges, exactly one conditional edge. The four nodes the outline names — `inspect_metadata`, `retrieve_runbook`, `recommend_action`, `approval_gate` — are marked with stars. The structure comes from the compiled `StateGraph`, so the diagram can never drift from the code; if a node disappears, the Mermaid disappears with it. Notice what is missing: there is no `do_anything` node, no `call_arbitrary_api` node. The agent can only do what this graph allows. That is what "controlled multi-step reasoning" actually means in practice. We have not run anything yet, so no node has fired. Next we trigger the workflow and watch the state object accumulate evidence.
 
 ### Step 2: Trigger the agent on a high-severity incident (LO 2a, 2b)
 
@@ -93,31 +93,29 @@ curl -s http://localhost:8000/agent/triage \
 - ★ review_required: true
 - ★ path: `inspect_metadata → retrieve_runbook → classify_severity → recommend_action → approval_gate`
 
-**What the learner should notice**: The state is one compact JSON object with the exact fields the rest of the team needs. The path line shows which nodes ran. `review_required=true` is the workflow stopping at the approval gate.
+**What the learner should notice**: This is the entire output of a real LangGraph run, fit on one screen as structured JSON. No scrolling logs, no free-form chatter. Every field the outline names is here — `incident_id` ties the run to the finance incident, `selected_edge` records that the graph branched to `recommend_action`, `evidence_summary` cites which runbook the agent retrieved, `decision_reason` explains why the agent thinks the deviation matters, and `review_required` is `true` because the workflow stopped at the approval gate. The `severity: high` came from the 30 percent deviation we passed in the payload. Notice that the agent has NOT taken any action against the warehouse — it has only proposed one. The next view shows the path that produced this decision.
 
-### Step 2b: Show the active path on the Mermaid diagram (LO 2a)
+### Step 2b: Show the execution path that produced the decision (LO 2a)
 
-**Goal**: Prove the diagram is not just a static topology — it reflects the path the workflow actually took.
+**Goal**: Move from the static topology to a traversal view — show the ordered sequence of nodes that actually fired during the run.
 
 ```bash
 curl -s "http://localhost:8000/agent/graph?incident_id=INC-2024-FIN-001" | \
   python3 scripts/fmt.py --type mermaid \
-  --title "LangGraph topology with active path highlighted" \
-  --why "Mermaid classDef styles the nodes that executed during the run"
+  --title "Execution path for INC-2024-FIN-001" \
+  --why "Ordered sequence of nodes that actually fired; classDef styles them in the diagram"
 ```
 
-**Expected output**: The same Mermaid source as Step 1, with two extra lines at the bottom:
+**Expected output**: a numbered traversal showing each executed node with a checkmark, plus the ordered path line and a note that the Mermaid `classDef active` styles the path in the rendered diagram:
 
-```text
-classDef active fill:#CFFF6E,stroke:#FF1675,stroke-width:3px,color:#000000;
-class inspect_metadata,retrieve_runbook,classify_severity,recommend_action,approval_gate active;
-```
-
-Plus a narrated line:
-
+- ★ 1. ✓ inspect_metadata
+- ★ 2. ✓ retrieve_runbook
+- ★ 3. ✓ classify_severity
+- ★ 4. ✓ recommend_action
+- ★ 5. ✓ approval_gate
 - ★ active path: `inspect_metadata → retrieve_runbook → classify_severity → recommend_action → approval_gate`
 
-**What the learner should notice**: The active path is computed by looking up the executed `agent_tool_calls` rows for this incident — the diagram is the audit trail, not a sales picture.
+**What the learner should notice**: This view answers a different question than Step 1. Step 1 asked "what could this graph do." This view asks "what did it actually do for this specific incident." The path comes from the `agent_tool_calls` rows for `INC-2024-FIN-001` ordered by `created_at`, so the diagram is now backed by real Postgres receipts. Five nodes ran; `auto_log` did not run because the conditional edge took the high-severity branch. The Mermaid output the service returned carries a `classDef active` line so a rendered diagram colors these five nodes in lime green with a pink border. The diagram and the database agree on what happened.
 
 ### Step 3: Show the agent_tool_calls table in Postgres (LO 2b)
 
@@ -147,7 +145,7 @@ docker exec northwind-postgres psql -U northwind -d northwind -c \
    ORDER BY created_at;"
 ```
 
-**What the learner should notice**: Each node in the LangGraph topology produced exactly one row. The input hash makes identical inputs detectable; the timestamps prove ordering.
+**What the learner should notice**: This is the answer to "how do I prove this agent did what it says it did" — a real Postgres table with one row per node executed. Five rows, one for each node along the high-severity path. Every row carries the four fields the outline asks for. The `tool_name` ties back to the LangGraph node that ran. The `input_hash` is a sha-256 over the canonicalized input — if the same incident gets retried, the hashes match, and you can cache or deduplicate. The `output_status` says whether the call succeeded. The `created_at` timestamp orders the rows and reconstructs the execution path we just showed in Step 2b. Notice there is no row for `auto_log` because the conditional edge sent this incident down the approval branch instead. This table is the audit log for any agent decision in production.
 
 ### Step 4: Show the agent_decisions table — `review_required` (LO 2a, 2b)
 
@@ -178,7 +176,7 @@ docker exec northwind-postgres psql -U northwind -d northwind -c \
    FROM agent_decisions ORDER BY created_at DESC LIMIT 1;"
 ```
 
-**What the learner should notice**: The decision row carries `status=review_required` and `selected_edge=recommend_action`. The trusted finance tables (`merchant_transactions`, `refunds`) are unchanged — the agent recommends, a human approves.
+**What the learner should notice**: This is the outline's hardest requirement, satisfied. `agent_decisions` shows `status: review_required`, not `auto_applied` or `production_written`. The `selected_edge` records exactly which branch of the graph led here. `severity: high` and `recommended_action` carry the agent's proposal, but no row in any trusted finance table changed during this run. You can prove it by querying `merchant_transactions` and `refunds` and seeing the row counts are identical to before. The agent advised; nothing was committed. The whole point of an approval gate is to make the difference between "the model said something" and "the warehouse changed" visible and explicit. That difference now lives as a row in Postgres a human can review at their own pace.
 
 ### Step 5: Show the conditional edge in action (LO 2a)
 
@@ -200,7 +198,7 @@ curl -s http://localhost:8000/agent/triage \
 - ★ review_required: false
 - ★ path: `inspect_metadata → retrieve_runbook → classify_severity → auto_log`
 
-**What the learner should notice**: The same compiled graph routed this incident to `auto_log` because the conditional edge on `classify_severity` chose the low-severity branch. No approval row is required because there is no proposed action on the trusted tables.
+**What the learner should notice**: This is the conditional edge proven in action. We send the exact same graph a different incident — `INC-2024-FIN-003` with only a 5 percent deviation, well below the 20 percent threshold. The classifier returns `severity: low`, and the conditional edge on `classify_severity` routes execution to `auto_log` instead of `recommend_action`. The path is one node shorter. There is no `approval_gate` row because there is no proposed action to approve; low-severity drift gets logged and trended, never escalated to a human. This is "design multi-step decision pipelines" from LO 2a — the same compiled artifact handles a critical incident and a routine drift, both bounded, both auditable, with no extra code path for the developer to maintain.
 
 ## Best-practice callout
 
