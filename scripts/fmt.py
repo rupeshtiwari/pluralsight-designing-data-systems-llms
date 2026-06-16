@@ -441,6 +441,64 @@ def fmt_triage(data: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Format: branch (Module 2 Step 5 — conditional-edge comparison)
+# ---------------------------------------------------------------------------
+
+def fmt_branch(data: dict) -> str:
+    """Module 2 Step 5 — focus on the conditional-edge decision only.
+
+    Reuses the /agent/triage response shape (so no new endpoint is
+    required), but the on-screen view is intentionally different from
+    Step 2 / fmt_triage:
+
+      Step 2 shows the full agent state JSON (7 stars, all narrated
+      fields). Step 5 shows the *branching decision* only — which edge
+      the conditional took, the path length, whether the approval
+      gate fired, and how many trusted-table rows changed. The audience
+      sees a different screen even though both runs use the same
+      compiled graph.
+    """
+    lines: list[str] = []
+    lines.extend(_maybe_heading("Conditional-edge decision"))
+
+    incident_id = str(data.get("incident_id", ""))
+    severity = str(data.get("severity", "")).lower()
+    selected = str(data.get("selected_edge", ""))
+    review = bool(data.get("review_required"))
+
+    # Infer the executed path from selected_edge so we do not depend
+    # on an explicit path field in the response.
+    if selected == "recommend_action":
+        path = ("inspect_metadata → retrieve_runbook → classify_severity → "
+                "recommend_action → approval_gate")
+        sibling = "auto_log"
+    else:
+        path = "inspect_metadata → retrieve_runbook → classify_severity → auto_log"
+        sibling = "recommend_action"
+
+    # Each ★ on its own line with a blank between — matches the rest of
+    # the Module 2 step spacing.
+    lines.append(f"  {PINK}★{RESET} {BLUE}incident:{RESET} {LGRN}{incident_id}{RESET}")
+    lines.append("")
+    sev_color = LIME if severity in ("low",) else PINK
+    lines.append(f"  {PINK}★{RESET} {BLUE}severity:{RESET} {sev_color}{severity}{RESET}")
+    lines.append("")
+    lines.append(f"  {PINK}★{RESET} {BLUE}branch taken:{RESET} {LGRN}{selected}{RESET}")
+    lines.append("")
+    lines.append(f"  {PINK}★{RESET} {BLUE}branch NOT taken:{RESET} {GRAY}{sibling}{RESET}")
+    lines.append("")
+    gate_val = "fired" if review else "skipped"
+    gate_color = PINK if review else LIME
+    lines.append(f"  {PINK}★{RESET} {BLUE}approval gate:{RESET} {gate_color}{gate_val}{RESET}")
+    lines.append("")
+    write_val = "none — agent did NOT write to trusted tables" if not review else "blocked — agent advised, awaiting human approval"
+    lines.append(f"  {PINK}★{RESET} {BLUE}trusted writes:{RESET} {LGRN}{write_val}{RESET}")
+    lines.append("")
+    lines.append(f"  {PINK}★{RESET} {BLUE}executed path:{RESET} {LGRN}{path}{RESET}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Format: mermaid (Module 2 Step 1 — show LangGraph topology source)
 # ---------------------------------------------------------------------------
 
@@ -1165,6 +1223,7 @@ FORMATTERS: dict[str, Any] = {
     "dispute": fmt_dispute,
     "batch": fmt_batch,
     "triage": fmt_triage,
+    "branch": fmt_branch,
     "mermaid": fmt_mermaid,
     "tool-calls": fmt_tool_calls,
     "agent-decisions": fmt_agent_decisions,

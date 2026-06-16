@@ -180,25 +180,27 @@ docker exec northwind-postgres psql -U northwind -d northwind -c \
 
 ### Step 5: Show the conditional edge in action (LO 2a)
 
-**Goal**: Prove the workflow really branches based on state — not every path goes to `approval_gate`.
+**Goal**: Prove the workflow really branches based on state — not every path goes to `approval_gate`. Step 5 deliberately uses a **different on-screen view** from Step 2: instead of repeating the agent state JSON, we show only the **branching decision** — which edge fired, which one did not, whether the approval gate ran, and whether any trusted-table row was written.
 
 ```bash
 curl -s http://localhost:8000/agent/triage \
   -H "Content-Type: application/json" \
-  -d @data/payloads/agent_triage_low.json | python3 scripts/fmt.py --type triage \
-  --title "Agent state — INC-2024-FIN-003 (low-severity branch)" \
-  --why "Conditional edge: low severity ⇒ auto_log, not approval_gate"
+  -d @data/payloads/agent_triage_low.json | python3 scripts/fmt.py --type branch \
+  --title "Conditional-edge decision (low-severity incident)" \
+  --why "Same compiled graph; conditional edge chose auto_log instead of recommend_action"
 ```
 
 **Expected output**:
 
-- ★ incident_id: `INC-2024-FIN-003`
-- ★ severity: `low` (5% deviation < 20% threshold)
-- ★ selected_edge: `auto_log`
-- ★ review_required: false
-- ★ path: `inspect_metadata → retrieve_runbook → classify_severity → auto_log`
+- ★ incident: `INC-2024-FIN-003`
+- ★ severity: `low`
+- ★ branch taken: `auto_log`
+- ★ branch NOT taken: `recommend_action`
+- ★ approval gate: `skipped`
+- ★ trusted writes: `none — agent did NOT write to trusted tables`
+- ★ executed path: `inspect_metadata → retrieve_runbook → classify_severity → auto_log`
 
-**What the learner should notice**: This is the conditional edge proven in action. We send the exact same graph a different incident — `INC-2024-FIN-003` with only a 5 percent deviation, well below the 20 percent threshold. The classifier returns `severity: low`, and the conditional edge on `classify_severity` routes execution to `auto_log` instead of `recommend_action`. The path is one node shorter. There is no `approval_gate` row because there is no proposed action to approve; low-severity drift gets logged and trended, never escalated to a human. This is "design multi-step decision pipelines" from LO 2a — the same compiled artifact handles a critical incident and a routine drift, both bounded, both auditable, with no extra code path for the developer to maintain.
+**What the learner should notice**: This is the conditional edge proven in action. Same compiled graph, different incident — `INC-2024-FIN-003` with only a 5 percent deviation. The classifier returns `severity: low`, and the conditional edge on `classify_severity` routes execution to `auto_log` instead of `recommend_action`. The path is one node shorter. The approval gate never fires because there is no proposed action to approve; low-severity drift gets logged and trended, never escalated to a human. This is "design multi-step decision pipelines" from LO 2a — the same compiled artifact handles a critical incident and a routine drift, both bounded, both auditable, with no extra code path to maintain.
 
 ## Best-practice callout
 

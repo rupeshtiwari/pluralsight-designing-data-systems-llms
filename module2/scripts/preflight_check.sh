@@ -363,7 +363,7 @@ fi
 # STEP 5 (LO 2a) — Conditional edge: low severity → auto_log branch
 # ═════════════════════════════════════════════════════════════════════════════
 step_header "5/5" "Conditional edge — low severity routes to auto_log" "2a — Pipeline branches based on state"
-show_command 'curl -s $API/agent/triage -H "Content-Type: application/json" -d @data/payloads/agent_triage_low.json'
+show_command 'curl -s $API/agent/triage -H "Content-Type: application/json" -d @data/payloads/agent_triage_low.json | python3 scripts/fmt.py --type branch'
 
 log_divider "STEP 5: Conditional edge (LO 2a)"
 log "INPUT PAYLOAD (data/payloads/agent_triage_low.json):"
