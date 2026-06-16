@@ -413,7 +413,9 @@ def fmt_triage(data: dict) -> str:
             "recommend_action" if data.get("review_required") else "auto_log"
         )}
 
-    # Blank line between each property so the author can highlight one ★ at a time
+    # One property per line; NO blank between consecutive properties so the
+    # output fits one recording screen. Author still highlights one star at
+    # a time because each ★ already sits on its own line.
     for field in order:
         if data.get(field) is None:
             continue
@@ -422,7 +424,6 @@ def fmt_triage(data: dict) -> str:
             lines.append(_hi(field, value))
         else:
             lines.append(_ctx(field, value))
-        lines.append("")
 
     # Canonical node path so the author can read the traversal aloud
     path_high = (
@@ -434,11 +435,8 @@ def fmt_triage(data: dict) -> str:
     )
     selected = data.get("selected_edge", "")
     path = path_high if selected == "recommend_action" else path_low
+    lines.append("")  # one blank to separate the path from the state block
     lines.append(f"  {PINK}★{RESET} {BLUE}path:{RESET} {LGRN}{path}{RESET}")
-    # Trailing blank lines so the shell prompt sits below the output
-    lines.append("")
-    lines.append("")
-
     return "\n".join(lines)
 
 
@@ -490,48 +488,40 @@ def fmt_mermaid(data: dict) -> str:
         lines.append("")
 
     if active_path:
-        # PATH VIEW — Step 2b. Blank line between each step in the traversal.
+        # PATH VIEW — Step 2b. One step per line, no blank between consecutive
+        # steps so the whole traversal fits one recording screen.
         lines.append(f"  {BLUE}execution path (ordered):{RESET}")
-        lines.append("")
         for i, n in enumerate(active_path, 1):
             lines.append(f"  {PINK}★{RESET} {LGRN}{i}.{RESET} "
                          f"{LIME}✓{RESET} {LGRN}{n}{RESET}")
-            lines.append("")
+        lines.append("")  # one blank before the summary line
         path_str = " → ".join(active_path)
         lines.append(f"  {PINK}★ active path:{RESET} {LGRN}{path_str}{RESET}")
-        lines.append("")
         lines.append(
             f"  {DIM}(Mermaid classDef 'active' styles these nodes "
             f"in green in the rendered diagram){RESET}"
         )
     else:
-        # TOPOLOGY VIEW — Step 1. Each metric on its own line so the author
-        # can highlight nodes/edges/conditional count independently.
+        # TOPOLOGY VIEW — Step 1. Each metric on its own line; supporting
+        # nodes (__start__, __end__, classify_severity, auto_log) are
+        # omitted so the four outline-named nodes dominate the screen
+        # and the whole step fits one frame at recording zoom.
         conditional_edges = sum(1 for e in edges if e.get("conditional"))
         lines.append(f"  {PINK}★ nodes:{RESET} {LGRN}{len(nodes)}{RESET}")
-        lines.append("")
         lines.append(f"  {PINK}★ edges:{RESET} {LGRN}{len(edges)}{RESET}")
-        lines.append("")
         lines.append(f"  {PINK}★ conditional edges:{RESET} {LGRN}{conditional_edges}{RESET}")
-        lines.append("")
         if nodes:
-            lines.append(f"  {BLUE}outline-named nodes (★) and supporting nodes:{RESET}")
-            lines.append("")
+            lines.append("")  # one blank before the node list
+            lines.append(f"  {BLUE}outline-named nodes:{RESET}")
             outline = {"inspect_metadata", "retrieve_runbook",
                        "recommend_action", "approval_gate"}
             for n in nodes:
                 if _should_star(n, n in outline):
                     lines.append(f"  {PINK}★{RESET} {LGRN}{n}{RESET}")
-                else:
-                    lines.append(f"    {GRAY}{n}{RESET}")
-                lines.append("")
 
     if active:
         lines.append(f"  {PINK}★ active node:{RESET} {LGRN}{active}{RESET}")
-        lines.append("")
 
-    # Trailing blank lines so the shell prompt has room below the output
-    lines.append("")
     return "\n".join(lines)
 
 
@@ -570,8 +560,8 @@ def fmt_tool_calls(data: dict) -> str:
         f"{BLUE}{'output_status':<15}{RESET} "
         f"{BLUE}created_at{RESET}"
     )
-    lines.append("")
-    # Blank line between each row so each tool call is independently highlightable
+    # One row per line, NO blank between rows — keeps the table compact
+    # and fits one recording screen.
     for r in rows:
         tool = str(r.get("tool_name", "?"))
         h = str(r.get("input_hash", ""))[:12]
@@ -584,11 +574,8 @@ def fmt_tool_calls(data: dict) -> str:
             f"{status_color}{status:<13}{RESET}   "
             f"{LGRN}{ts}{RESET}"
         )
-        lines.append("")
     if not rows:
         lines.append(f"  {DIM}(no tool calls recorded){RESET}")
-    # Trailing blank lines so the shell prompt sits below the table
-    lines.append("")
     return "\n".join(lines)
 
 
@@ -627,7 +614,8 @@ def fmt_agent_decisions(data: Any) -> str:
         "incident_id", "status", "severity", "selected_edge",
         "recommended_action", "decision_reason", "evidence_summary",
     ]
-    # Blank line between each property so the author can highlight one ★ at a time
+    # One property per line; NO blank between consecutive properties so the
+    # whole record fits one recording screen.
     for field in order:
         if record.get(field) is None:
             continue
@@ -636,19 +624,16 @@ def fmt_agent_decisions(data: Any) -> str:
             lines.append(_hi(field, value))
         else:
             lines.append(_ctx(field, value))
-        lines.append("")
 
     # review_required is implicit in status == 'review_required' — show it
     # explicitly so the proof point is unmistakable on screen.
     review_required = (str(record.get("status", "")).lower() == "review_required")
     rr_val = "true" if review_required else "false"
     rr_color = LIME if review_required else GRAY
+    lines.append("")  # one blank to separate the proof line
     lines.append(
         f"  {PINK}★{RESET} {BLUE}review_required:{RESET} {rr_color}{rr_val}{RESET}"
     )
-    # Trailing blank lines so the shell prompt has room below the output
-    lines.append("")
-    lines.append("")
     return "\n".join(lines)
 
 
