@@ -380,15 +380,3 @@ Proof points to verify:
 | 3c | Trigger and monitor pipeline tasks | 3.1, 3.3, 3.4, 4.3, 4.4 |
 | 3d | Apply guardrails and validation for safe system behavior | 2.3, 3.4, 4.1, 4.2, 4.4 |
 
-## Color palette (Pluralsight brand)
-
-| Color | Hex | Terminal use |
-|-------|-----|-------------|
-| Transform Pink | #FF1675 | Blocked, violations, FAIL |
-| Lime Green | #CFFF6E | Allowed, PASS, enabled |
-| Limited Green | #40FFBF | Token counts, hash values |
-| Blue | #2AECFA | All field labels |
-| ADA Green | #29826F | PII types, filtered actions |
-| Light Gray | #BFBFBF | Secondary info |
-| White (bold) | #FFFFFF | Headings only |
-| Inky Blue | #130F25 | Dark backgrounds |
