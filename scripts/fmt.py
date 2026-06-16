@@ -1384,13 +1384,12 @@ def main() -> None:
 
     global PANEL_SHOWN
     if args.title:
-        # Two leading blank lines before the panel for Module 2 formatters
-        # so the previous shell prompt does not sit immediately under the
-        # new step's output box. Module 1 formatters keep the tight layout.
+        # One leading blank line before the panel for Module 2 formatters
+        # so the curl command above doesn't touch the new step's output box.
+        # Module 1 formatters keep the tight layout.
         _MODULE2_TYPES = {"triage", "branch", "mermaid",
                           "tool-calls", "agent-decisions"}
         if args.type in _MODULE2_TYPES:
-            print()
             print()
         print(_panel(args.title, args.why))
         print()
