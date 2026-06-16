@@ -262,6 +262,53 @@ def _ctx(label: str, value: str) -> str:
     return f"    {GRAY}{label}: {value}{RESET}"
 
 
+# -- Module 2 wrapping helpers --------------------------------------------
+# Used by fmt_triage / fmt_branch / fmt_agent_decisions so long values like
+# decision_reason or recommended_action wrap to the next line WITHOUT
+# splitting words in the middle, and the continuation aligns under the
+# start of the value (right after the colon), not at column 0.
+# Module 1 formatters intentionally continue to use _hi / _ctx unchanged.
+
+def _hi_wrap(label: str, value: str) -> str:
+    import shutil, textwrap
+    value = str(value)
+    prefix_visible = f"  ★ {label}: "
+    prefix_colored = f"  {PINK}★{RESET} {BLUE}{label}:{RESET} "
+    width = shutil.get_terminal_size((100, 24)).columns
+    available = max(20, width - len(prefix_visible) - 2)
+    if len(value) <= available:
+        return f"{prefix_colored}{LGRN}{value}{RESET}"
+    wrapped = textwrap.wrap(
+        value, width=available,
+        break_long_words=False, break_on_hyphens=False,
+    )
+    indent = " " * len(prefix_visible)
+    parts = [f"{prefix_colored}{LGRN}{wrapped[0]}{RESET}"]
+    for line in wrapped[1:]:
+        parts.append(f"{indent}{LGRN}{line}{RESET}")
+    return "\n".join(parts)
+
+
+def _ctx_wrap(label: str, value: str) -> str:
+    import shutil, textwrap
+    value = str(value)
+    prefix_visible = f"    {label}: "
+    prefix_colored = f"    {GRAY}{label}: "
+    width = shutil.get_terminal_size((100, 24)).columns
+    available = max(20, width - len(prefix_visible) - 2)
+    if len(value) <= available:
+        return f"{prefix_colored}{value}{RESET}"
+    wrapped = textwrap.wrap(
+        value, width=available,
+        break_long_words=False, break_on_hyphens=False,
+    )
+    indent = " " * len(prefix_visible)
+    parts = [f"{prefix_colored}{wrapped[0]}{RESET}"]
+    for line in wrapped[1:]:
+        parts.append(f"{indent}{GRAY}{line}{RESET}")
+    return "\n".join(parts)
+
+
 def fmt_feedback(data: dict) -> str:
     lines: list[str] = []
     lines.extend(_maybe_heading("Feedback Enrichment"))
@@ -421,9 +468,9 @@ def fmt_triage(data: dict) -> str:
             continue
         value = str(data[field])
         if _should_star(field, field in defaults):
-            lines.append(_hi(field, value))
+            lines.append(_hi_wrap(field, value))
         else:
-            lines.append(_ctx(field, value))
+            lines.append(_ctx_wrap(field, value))
         lines.append("")
 
     # Canonical node path so the author can read the traversal aloud
@@ -496,9 +543,9 @@ def fmt_branch(data: dict) -> str:
     lines.append(f"  {PINK}★{RESET} {BLUE}approval gate:{RESET} {gate_color}{gate_val}{RESET}")
     lines.append("")
     write_val = "none — agent did NOT write to trusted tables" if not review else "blocked — agent advised, awaiting human approval"
-    lines.append(f"  {PINK}★{RESET} {BLUE}trusted writes:{RESET} {LGRN}{write_val}{RESET}")
+    lines.append(_hi_wrap("trusted writes", write_val))
     lines.append("")
-    lines.append(f"  {PINK}★{RESET} {BLUE}executed path:{RESET} {LGRN}{path}{RESET}")
+    lines.append(_hi_wrap("executed path", path))
     # Two trailing blank lines so the shell prompt has breathing room
     # TRAILING-PAD-MARKER
     lines.append("")
@@ -691,9 +738,9 @@ def fmt_agent_decisions(data: Any) -> str:
             continue
         value = str(record[field])
         if _should_star(field, field in defaults):
-            lines.append(_hi(field, value))
+            lines.append(_hi_wrap(field, value))
         else:
-            lines.append(_ctx(field, value))
+            lines.append(_ctx_wrap(field, value))
         lines.append("")
 
     # review_required is implicit in status == 'review_required' — show it
