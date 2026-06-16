@@ -534,16 +534,18 @@ def fmt_tool_calls(data: dict) -> str:
     if backend:
         lines.append(_hi("backend", str(backend)) if _should_star("backend", False)
                      else _ctx("backend", str(backend)))
+        lines.append("")
     incident = data.get("incident_id")
     if incident:
         lines.append(_ctx("incident_id", str(incident)))
+        lines.append("")
     count = data.get("count")
     if count is not None:
         lines.append(_ctx("count", str(count)))
+        lines.append("")
 
     rows = data.get("tool_calls", []) or []
     rows = rows[:7]
-    lines.append("")
     # Column header
     lines.append(
         f"  {BLUE}{'tool_name':<22}{RESET} "
@@ -586,6 +588,7 @@ def fmt_agent_decisions(data: Any) -> str:
         backend = data.get("backend")
         if backend:
             lines.append(_ctx("backend", str(backend)))
+            lines.append("")
         rows = data.get("decisions", []) or []
     elif isinstance(data, list):
         rows = data
