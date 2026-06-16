@@ -90,6 +90,7 @@ async def triage_anomaly(req: AnomalyTriageRequest) -> AnomalyTriageResponse:
         recommended_action=final_state.get("recommended_action", "") or "",
         evidence_summary=final_state.get("evidence_summary", "") or "",
         review_required=bool(final_state.get("review_required")),
+        selected_edge=final_state.get("selected_edge", "") or "",
     )
 
 

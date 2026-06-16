@@ -48,6 +48,7 @@ class AnomalyTriageResponse(BaseModel):
     recommended_action: str
     evidence_summary: str
     review_required: bool
+    selected_edge: str = ""
 
 
 class CatalogEnrichRequest(BaseModel):
