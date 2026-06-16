@@ -437,6 +437,10 @@ def fmt_triage(data: dict) -> str:
     selected = data.get("selected_edge", "")
     path = path_high if selected == "recommend_action" else path_low
     lines.append(f"  {PINK}★{RESET} {BLUE}path:{RESET} {LGRN}{path}{RESET}")
+    # Two trailing blank lines so the shell prompt has breathing room
+    # TRAILING-PAD-MARKER
+    lines.append("")
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -495,6 +499,10 @@ def fmt_branch(data: dict) -> str:
     lines.append(f"  {PINK}★{RESET} {BLUE}trusted writes:{RESET} {LGRN}{write_val}{RESET}")
     lines.append("")
     lines.append(f"  {PINK}★{RESET} {BLUE}executed path:{RESET} {LGRN}{path}{RESET}")
+    # Two trailing blank lines so the shell prompt has breathing room
+    # TRAILING-PAD-MARKER
+    lines.append("")
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -571,6 +579,10 @@ def fmt_mermaid(data: dict) -> str:
     if active:
         lines.append(f"  {PINK}★ active node:{RESET} {LGRN}{active}{RESET}")
 
+    # Two trailing blank lines so the shell prompt has breathing room
+    # TRAILING-PAD-MARKER
+    lines.append("")
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -629,6 +641,10 @@ def fmt_tool_calls(data: dict) -> str:
         lines.append("")
     if not rows:
         lines.append(f"  {DIM}(no tool calls recorded){RESET}")
+    # Two trailing blank lines so the shell prompt has breathing room
+    # TRAILING-PAD-MARKER
+    lines.append("")
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -688,6 +704,10 @@ def fmt_agent_decisions(data: Any) -> str:
     lines.append(
         f"  {PINK}★{RESET} {BLUE}review_required:{RESET} {rr_color}{rr_val}{RESET}"
     )
+    # Two trailing blank lines so the shell prompt has breathing room
+    # TRAILING-PAD-MARKER
+    lines.append("")
+    lines.append("")
     return "\n".join(lines)
 
 
