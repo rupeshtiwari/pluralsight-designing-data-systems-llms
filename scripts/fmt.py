@@ -413,9 +413,9 @@ def fmt_triage(data: dict) -> str:
             "recommend_action" if data.get("review_required") else "auto_log"
         )}
 
-    # One property per line; NO blank between consecutive properties so the
-    # output fits one recording screen. Author still highlights one star at
-    # a time because each ★ already sits on its own line.
+    # One property per line + a blank line between each so every ★ is
+    # independently highlightable on camera. Output stays compact because
+    # we omit the "source:" / "section header" noise.
     for field in order:
         if data.get(field) is None:
             continue
@@ -424,6 +424,7 @@ def fmt_triage(data: dict) -> str:
             lines.append(_hi(field, value))
         else:
             lines.append(_ctx(field, value))
+        lines.append("")
 
     # Canonical node path so the author can read the traversal aloud
     path_high = (
@@ -435,7 +436,6 @@ def fmt_triage(data: dict) -> str:
     )
     selected = data.get("selected_edge", "")
     path = path_high if selected == "recommend_action" else path_low
-    lines.append("")  # one blank to separate the path from the state block
     lines.append(f"  {PINK}★{RESET} {BLUE}path:{RESET} {LGRN}{path}{RESET}")
     return "\n".join(lines)
 
@@ -470,15 +470,6 @@ def fmt_mermaid(data: dict) -> str:
     nodes = data.get("nodes", []) or []
     edges = data.get("edges", []) or []
 
-    # Tell the audience where the diagram comes from, without dumping it.
-    if mermaid_src:
-        line_count = len(mermaid_src.splitlines())
-        lines.append(
-            f"  {DIM}source: compiled.get_graph().draw_mermaid() "
-            f"({line_count} lines, hidden){RESET}"
-        )
-        lines.append("")
-
     # Optional: dump the raw source when the author asks for it.
     if SHOW_MERMAID and mermaid_src:
         lines.append(f"{DIM}--- mermaid source ---{RESET}")
@@ -488,36 +479,34 @@ def fmt_mermaid(data: dict) -> str:
         lines.append("")
 
     if active_path:
-        # PATH VIEW — Step 2b. One step per line, no blank between consecutive
-        # steps so the whole traversal fits one recording screen.
-        lines.append(f"  {BLUE}execution path (ordered):{RESET}")
+        # PATH VIEW — Step 2b. One step per line, blank line between each so
+        # the author can highlight one step at a time on camera.
         for i, n in enumerate(active_path, 1):
             lines.append(f"  {PINK}★{RESET} {LGRN}{i}.{RESET} "
                          f"{LIME}✓{RESET} {LGRN}{n}{RESET}")
-        lines.append("")  # one blank before the summary line
+            lines.append("")
         path_str = " → ".join(active_path)
         lines.append(f"  {PINK}★ active path:{RESET} {LGRN}{path_str}{RESET}")
-        lines.append(
-            f"  {DIM}(Mermaid classDef 'active' styles these nodes "
-            f"in green in the rendered diagram){RESET}"
-        )
     else:
-        # TOPOLOGY VIEW — Step 1. Each metric on its own line; supporting
-        # nodes (__start__, __end__, classify_severity, auto_log) are
-        # omitted so the four outline-named nodes dominate the screen
-        # and the whole step fits one frame at recording zoom.
+        # TOPOLOGY VIEW — Step 1. Blank line between each star metric and
+        # between each outline-named node so every property is independently
+        # highlightable on camera. Supporting nodes (__start__, __end__,
+        # classify_severity, auto_log) are omitted so the four outline-named
+        # nodes dominate the screen.
         conditional_edges = sum(1 for e in edges if e.get("conditional"))
         lines.append(f"  {PINK}★ nodes:{RESET} {LGRN}{len(nodes)}{RESET}")
+        lines.append("")
         lines.append(f"  {PINK}★ edges:{RESET} {LGRN}{len(edges)}{RESET}")
+        lines.append("")
         lines.append(f"  {PINK}★ conditional edges:{RESET} {LGRN}{conditional_edges}{RESET}")
         if nodes:
-            lines.append("")  # one blank before the node list
-            lines.append(f"  {BLUE}outline-named nodes:{RESET}")
+            lines.append("")
             outline = {"inspect_metadata", "retrieve_runbook",
                        "recommend_action", "approval_gate"}
             for n in nodes:
                 if _should_star(n, n in outline):
                     lines.append(f"  {PINK}★{RESET} {LGRN}{n}{RESET}")
+                    lines.append("")
 
     if active:
         lines.append(f"  {PINK}★ active node:{RESET} {LGRN}{active}{RESET}")
@@ -560,8 +549,9 @@ def fmt_tool_calls(data: dict) -> str:
         f"{BLUE}{'output_status':<15}{RESET} "
         f"{BLUE}created_at{RESET}"
     )
-    # One row per line, NO blank between rows — keeps the table compact
-    # and fits one recording screen.
+    lines.append("")
+    # One row per line + a blank between each row so each tool call is
+    # independently highlightable on camera.
     for r in rows:
         tool = str(r.get("tool_name", "?"))
         h = str(r.get("input_hash", ""))[:12]
@@ -574,6 +564,7 @@ def fmt_tool_calls(data: dict) -> str:
             f"{status_color}{status:<13}{RESET}   "
             f"{LGRN}{ts}{RESET}"
         )
+        lines.append("")
     if not rows:
         lines.append(f"  {DIM}(no tool calls recorded){RESET}")
     return "\n".join(lines)
@@ -614,8 +605,8 @@ def fmt_agent_decisions(data: Any) -> str:
         "incident_id", "status", "severity", "selected_edge",
         "recommended_action", "decision_reason", "evidence_summary",
     ]
-    # One property per line; NO blank between consecutive properties so the
-    # whole record fits one recording screen.
+    # One property per line + a blank line between each so every ★ is
+    # independently highlightable on camera.
     for field in order:
         if record.get(field) is None:
             continue
@@ -624,13 +615,13 @@ def fmt_agent_decisions(data: Any) -> str:
             lines.append(_hi(field, value))
         else:
             lines.append(_ctx(field, value))
+        lines.append("")
 
     # review_required is implicit in status == 'review_required' — show it
     # explicitly so the proof point is unmistakable on screen.
     review_required = (str(record.get("status", "")).lower() == "review_required")
     rr_val = "true" if review_required else "false"
     rr_color = LIME if review_required else GRAY
-    lines.append("")  # one blank to separate the proof line
     lines.append(
         f"  {PINK}★{RESET} {BLUE}review_required:{RESET} {rr_color}{rr_val}{RESET}"
     )
