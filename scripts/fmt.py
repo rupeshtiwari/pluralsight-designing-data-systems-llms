@@ -501,6 +501,8 @@ def fmt_mermaid(data: dict) -> str:
         lines.append(f"  {PINK}★ conditional edges:{RESET} {LGRN}{conditional_edges}{RESET}")
         if nodes:
             lines.append("")
+            lines.append(f"  {BLUE}outline-named nodes:{RESET}")
+            lines.append("")
             outline = {"inspect_metadata", "retrieve_runbook",
                        "recommend_action", "approval_gate"}
             for n in nodes:
