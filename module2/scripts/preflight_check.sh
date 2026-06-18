@@ -313,7 +313,7 @@ if [[ "$TC_STATUS_OK" == "1" ]]; then pass "every row has an output_status"; els
 # STEP 4 (LO 2a, 2b) — agent_decisions table (review_required)
 # ═════════════════════════════════════════════════════════════════════════════
 step_header "4/5" "Show agent_decisions (approval gate)" "2a, 2b — Agent advises, does not act"
-show_command "curl -s '$API/admin/agent-decisions?limit=1' | python3 scripts/fmt.py --type agent-decisions"
+show_command "curl -s '$API/admin/agent-decisions?incident_id=INC-2024-FIN-001&limit=1' | python3 scripts/fmt.py --type agent-decisions"
 
 log_divider "STEP 4: agent_decisions table (LO 2a, 2b)"
 DEC_JSON=$(curl -sf "$API/admin/agent-decisions?limit=2")

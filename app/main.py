@@ -217,10 +217,21 @@ async def list_agent_tool_calls(
 
 
 @app.get("/admin/agent-decisions")
-async def list_admin_agent_decisions(limit: int = 10) -> dict:
-    """List agent decision ledger rows. The Module 2 Step 4 proof point."""
+async def list_admin_agent_decisions(
+    limit: int = 10, incident_id: str | None = None,
+) -> dict:
+    """List agent decision ledger rows. The Module 2 Step 4 proof point.
+
+    When `incident_id` is provided, return only that incident's decision
+    so the demo always shows the expected row regardless of execution order.
+    """
     from app.db import postgres
-    rows = await postgres.get_agent_decisions(limit=limit)
+    if incident_id:
+        # Fetch a larger pool so the filter has something to match against.
+        all_rows = await postgres.get_agent_decisions(limit=200)
+        rows = [r for r in all_rows if r.get("incident_id") == incident_id][:limit]
+    else:
+        rows = await postgres.get_agent_decisions(limit=limit)
     return {
         "backend": "postgres" if postgres.is_postgres_available() else "memory",
         "count": len(rows),

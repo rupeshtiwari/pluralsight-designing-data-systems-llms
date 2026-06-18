@@ -152,7 +152,7 @@ docker exec northwind-postgres psql -U northwind -d northwind -c \
 **Goal**: Prove the agent stopped at the approval gate instead of auto-writing to a trusted table.
 
 ```bash
-curl -s "http://localhost:8000/admin/agent-decisions?limit=1" | \
+curl -s "http://localhost:8000/admin/agent-decisions?incident_id=INC-2024-FIN-001&limit=1" | \
   python3 scripts/fmt.py --type agent-decisions \
   --title "agent_decisions (latest)" \
   --why "Approval gate writes review_required — no automatic production write"
