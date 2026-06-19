@@ -344,10 +344,15 @@ def graph_topology(active_path: list[str] | None = None) -> dict[str, Any]:
         {"source": e.source, "target": e.target, "conditional": bool(e.conditional)}
         for e in graph_view.edges
     ]
+    deduped_path: list[str] = []
     if active_path:
+        # Dedupe while preserving first-occurrence order. If the demo runs
+        # the same incident twice, agent_tool_calls contains the duplicated
+        # node history; for the diagram + execution-path view we only care
+        # which nodes fired, not how many times.
         seen: set[str] = set()
-        ordered = [n for n in active_path if not (n in seen or seen.add(n))]
-        highlights = ",".join(ordered)
+        deduped_path = [n for n in active_path if not (n in seen or seen.add(n))]
+        highlights = ",".join(deduped_path)
         if highlights:
             mermaid = mermaid.rstrip() + (
                 "\n\tclassDef active fill:#CFFF6E,stroke:#FF1675,"
@@ -358,5 +363,5 @@ def graph_topology(active_path: list[str] | None = None) -> dict[str, Any]:
         "mermaid": mermaid,
         "nodes": nodes,
         "edges": edges,
-        "active_path": active_path or [],
+        "active_path": deduped_path,
     }
