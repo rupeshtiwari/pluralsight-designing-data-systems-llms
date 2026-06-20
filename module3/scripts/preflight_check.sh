@@ -175,7 +175,7 @@ log "INPUT PAYLOAD (data/payloads/airflow_trigger.json):"
 cat "$PROJECT_ROOT/data/payloads/airflow_trigger.json" >> "$LOG"
 log ""
 
-TRIG=$(curl -sf -X POST "$API/admin/airflow-trigger" \
+TRIG=$(curl -sf -X POST "$API/admin/airflow-trigger?wait=true&max_wait=90" \
   -H "Content-Type: application/json" \
   -d @"$PROJECT_ROOT/data/payloads/airflow_trigger.json")
 echo "$TRIG" | python3 -m json.tool > "$TMPD/step2.json" 2>&1
@@ -216,10 +216,10 @@ fi
 # STEP 3 (LO 3c) — State transitions
 # ═════════════════════════════════════════════════════════════════════════════
 step_header "3/6" "Watch state transitions (queued → running → success)" "3c — Monitor pipeline tasks"
-show_command "curl -s '$API/admin/airflow-dag-runs?limit=3' | python3 scripts/fmt.py --type airflow-dag-runs"
+show_command "curl -s \"\$API/admin/airflow-dag-runs?dag_run_id=\$DAG_RUN_ID&limit=1\" | python3 scripts/fmt.py --type airflow-dag-runs"
 
 log_divider "STEP 3: State transitions (LO 3c)"
-RUNS_JSON=$(curl -sf "$API/admin/airflow-dag-runs?limit=3")
+RUNS_JSON=$(curl -sf "$API/admin/airflow-dag-runs?dag_run_id=${DAG_RUN_ID}&limit=1")
 echo "$RUNS_JSON" | python3 -m json.tool > "$TMPD/step3.json" 2>&1
 log "OUTPUT:"
 cat "$TMPD/step3.json" >> "$LOG"
@@ -291,7 +291,7 @@ step_header "4/6" "Inspect task log for batch_id, request_id, validation_result,
 show_command "curl -s \"$API/admin/airflow-task-log?dag_run_id=\$RUN_ID&task_id=enrich_via_fastapi\" | python3 scripts/fmt.py --type airflow-task-log"
 
 log_divider "STEP 4: Task log fields (LO 3b)"
-LOG_JSON=$(curl -sf "$API/admin/airflow-task-log?dag_run_id=${LATEST_RUN}&task_id=enrich_via_fastapi")
+LOG_JSON=$(curl -sf "$API/admin/airflow-task-log?dag_run_id=${DAG_RUN_ID}&task_id=enrich_via_fastapi")
 echo "$LOG_JSON" | python3 -m json.tool > "$TMPD/step4.json" 2>&1
 log "OUTPUT:"
 cat "$TMPD/step4.json" >> "$LOG"
@@ -414,7 +414,7 @@ step_header "6/6" "Show the dynamic branch decision" "3a, 3d — Dynamic orchest
 show_command "curl -s \"$API/admin/airflow-branch-decision?dag_run_id=\$RUN_ID\" | python3 scripts/fmt.py --type airflow-branch"
 
 log_divider "STEP 6: Branch decision (LO 3a, 3d)"
-BR_JSON=$(curl -sf "$API/admin/airflow-branch-decision?dag_run_id=${LATEST_RUN}")
+BR_JSON=$(curl -sf "$API/admin/airflow-branch-decision?dag_run_id=${DAG_RUN_ID}")
 echo "$BR_JSON" | python3 -m json.tool > "$TMPD/step6.json" 2>&1
 log "OUTPUT:"
 cat "$TMPD/step6.json" >> "$LOG"

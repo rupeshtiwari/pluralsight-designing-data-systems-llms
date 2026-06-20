@@ -258,23 +258,41 @@ async def get_airflow_dag() -> dict:
 
 
 @app.post("/admin/airflow-trigger")
-async def post_airflow_trigger(conf: dict | None = None) -> dict:
-    """Trigger northwind_llm_enrichment from a new source batch (Step 2)."""
+async def post_airflow_trigger(
+    conf: dict | None = None,
+    wait: bool = False,
+    max_wait: int = 60,
+) -> dict:
+    """Trigger northwind_llm_enrichment from a new source batch (Step 2).
+
+    Pass `?wait=true` to block until the run reaches success/failed
+    (max_wait seconds). The Module 3 demo uses wait=true so Steps 3, 4,
+    and 6 can query that exact dag_run_id against a finished run.
+    """
     from app.clients import airflow as af
     body = conf or {}
-    # Accept both {"conf": {...}} (matches Airflow REST shape) and
-    # raw conf payloads for convenience.
     run_conf = body.get("conf", body)
-    return af.trigger_dag_run(run_conf)
+    return af.trigger_dag_run(run_conf, wait=wait, max_wait=max_wait)
 
 
 @app.get("/admin/airflow-dag-runs")
-async def get_airflow_dag_runs(limit: int = 5) -> dict:
-    """Recent DAG runs with state transitions (Step 3)."""
+async def get_airflow_dag_runs(
+    limit: int = 5,
+    dag_run_id: str | None = None,
+) -> dict:
+    """Recent DAG runs with state transitions (Step 3).
+
+    When `dag_run_id` is set, return ONLY that run so Step 3 can
+    pin to the run that Step 2 triggered, instead of showing whatever
+    run happened to be latest at query time.
+    """
     from app.clients import airflow as af
+    rows = af.list_dag_runs(limit=max(limit, 20) if dag_run_id else limit)
+    if dag_run_id:
+        rows = [r for r in rows if r.get("dag_run_id") == dag_run_id][:limit]
     return {"dag_id": "northwind_llm_enrichment",
             "limit": limit,
-            "dag_runs": af.list_dag_runs(limit=limit)}
+            "dag_runs": rows}
 
 
 @app.get("/admin/airflow-task-log")

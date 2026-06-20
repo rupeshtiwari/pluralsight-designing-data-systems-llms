@@ -297,20 +297,46 @@ def get_dag_topology() -> dict[str, Any]:
     return {**_DAG_TOPOLOGY, "backend": "memory"}
 
 
-def trigger_dag_run(conf: dict[str, Any]) -> dict[str, Any]:
-    """Trigger a new DAG run; returns dag_run_id and queued state."""
+def trigger_dag_run(conf: dict[str, Any], wait: bool = False,
+                    max_wait: int = 60) -> dict[str, Any]:
+    """Trigger a new DAG run; returns dag_run_id and queued state.
+
+    When `wait=True`, poll the run until it reaches a terminal state
+    (success/failed) or `max_wait` seconds elapse. This lets the demo
+    capture a dag_run_id in Step 2 and reuse it in Steps 3/4/6 against
+    a run that has already finished, so the on-screen states match.
+    """
     if _airflow_reachable():
         data = _real_post(
             f"/api/v1/dags/{DAG_ID}/dagRuns",
             {"conf": conf},
         )
         if data:
+            run_id = data.get("dag_run_id")
+            state = data.get("state", "queued")
+            execution_date = data.get("execution_date")
+            logical_date = data.get("logical_date")
+
+            if wait and run_id:
+                import time as _t
+                deadline = _t.time() + max_wait
+                while _t.time() < deadline:
+                    r = _real_get(
+                        f"/api/v1/dags/{DAG_ID}/dagRuns/{run_id}"
+                    )
+                    if r:
+                        state = r.get("state") or state
+                        if state in ("success", "failed"):
+                            break
+                    _t.sleep(3)
+
             return {
-                "dag_run_id": data.get("dag_run_id"),
-                "state": data.get("state", "queued"),
-                "execution_date": data.get("execution_date"),
-                "logical_date": data.get("logical_date"),
+                "dag_run_id": run_id,
+                "state": state,
+                "execution_date": execution_date,
+                "logical_date": logical_date,
                 "backend": "airflow",
+                "waited_for_terminal": bool(wait),
             }
     # Fallback — synthesize a queued run, then immediately seed it as
     # success so subsequent dag-runs / task-log / branch / dispositions
@@ -320,10 +346,11 @@ def trigger_dag_run(conf: dict[str, Any]) -> dict[str, Any]:
     run = _seed_stub_run(batch_id=batch_id, feedback_ids=feedback_ids)
     return {
         "dag_run_id": run["dag_run_id"],
-        "state": "queued",
+        "state": "success" if wait else "queued",
         "execution_date": run["execution_date"],
         "logical_date": run["logical_date"],
         "backend": "memory",
+        "waited_for_terminal": bool(wait),
     }
 
 

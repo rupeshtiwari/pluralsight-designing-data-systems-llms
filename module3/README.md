@@ -82,34 +82,39 @@ curl -s http://localhost:8000/admin/airflow-dag | python3 scripts/fmt.py --type 
 
 **What the learner should notice**: The DAG is a bounded structure. Six tasks. Three of them — `extract_batch`, `transform`, `enrich_via_fastapi` — always run in the same deterministic order. The fourth task, `validation_branch`, decides at runtime whether `write_trusted` or `write_quarantine` runs for each record. That mix is the answer to LO 3a. A purely static DAG would force every record down the same path and lose the ability to quarantine bad LLM output. An open-ended agent would let the LLM decide where to write. This DAG lets the LLM propose a classification, then a deterministic branch picks the safe downstream task based on whether the proposal passed validation. The topology endpoint is the structural source of truth — if a task is added or removed in `airflow/dags/northwind_llm_enrichment.py`, this view changes on the next refresh.
 
-### Step 2: Trigger the DAG from a new source batch (LO 3c)
+### Step 2: Trigger the DAG and capture the run id (LO 3c)
 
-**Goal**: Start a fresh DAG run from a payload that names the batch and the feedback records to enrich.
+**Goal**: Start a fresh DAG run from a payload that names the batch and the feedback records to enrich, wait for it to finish, and capture the `dag_run_id` so Steps 3, 4, and 6 can all pin to this exact run.
 
 ```bash
-curl -s -X POST http://localhost:8000/admin/airflow-trigger \
+TRIGGER=$(curl -s -X POST "http://localhost:8000/admin/airflow-trigger?wait=true&max_wait=90" \
   -H "Content-Type: application/json" \
-  -d @data/payloads/airflow_trigger.json | python3 scripts/fmt.py --type airflow-trigger \
+  -d @data/payloads/airflow_trigger.json)
+echo "$TRIGGER" | python3 scripts/fmt.py --type airflow-trigger \
   --title "Trigger northwind_llm_enrichment for BATCH-2024-001" \
-  --why "Returns dag_run_id and the initial queued state"
+  --why "wait=true blocks until the run reaches success/failed; returns final state"
+
+# Capture the run id for the rest of the demo
+RUN_ID=$(echo "$TRIGGER" | python3 -c "import json,sys;print(json.load(sys.stdin)['dag_run_id'])")
+echo "RUN_ID=$RUN_ID"
 ```
 
 **Expected output**:
 
-- ★ dag_run_id: `manual__2024-...` (the id the next steps query)
-- ★ state: `queued`
+- ★ dag_run_id: `manual__2024-...` (the id Steps 3/4/6 will use)
+- ★ state: `success` (because `wait=true` blocks until the run finishes)
 - ★ logical_date: ISO-8601 timestamp the scheduler assigned
-- backend: `airflow` or `memory`
+- backend: `airflow`
 
-**What the learner should notice**: A trigger is a single POST. The `conf` block in the payload carries the batch metadata — `batch_id`, `source`, `feedback_ids` — so the DAG knows which records to pull. The response is intentionally small: a `dag_run_id` and a `state=queued`. The DAG has not run yet; it has only been accepted by the scheduler. That separation matters. The trigger endpoint never blocks on LLM execution; it hands the work off to Airflow and returns immediately. The `dag_run_id` is the handle you carry into every subsequent step — the run history, the task log, the branch decision — they all key off this id. This is the contract every operations runbook needs: one stable identifier to follow a batch end-to-end.
+**What the learner should notice**: A trigger is a single POST. The `conf` block in the payload carries the batch metadata — `batch_id`, `source`, `feedback_ids` — so the DAG knows which records to pull. The `wait=true` query parameter is the operational glue every runbook needs: without it the response returns immediately with `state=queued` and downstream steps may query an in-flight run that has no task log or branch decision yet. With it, the endpoint polls the same `dag_run_id` until it reaches a terminal state, returning the final result the demo will inspect. The `dag_run_id` you just captured is the handle Steps 3, 4, and 6 all use — one stable identifier follows a batch end-to-end.
 
 ### Step 3: Watch state transitions (queued → running → success) (LO 3c)
 
-**Goal**: Show the most-recent run's state transitions and duration without leaving the CLI.
+**Goal**: Pin to the `RUN_ID` captured in Step 2 and show its state transitions — no risk of querying a different in-flight run.
 
 ```bash
-curl -s "http://localhost:8000/admin/airflow-dag-runs?limit=3" | python3 scripts/fmt.py --type airflow-dag-runs \
-  --title "DAG run state transitions (last 3 runs)" \
+curl -s "http://localhost:8000/admin/airflow-dag-runs?dag_run_id=${RUN_ID}&limit=1" | python3 scripts/fmt.py --type airflow-dag-runs \
+  --title "DAG run state transitions for $RUN_ID" \
   --why "queued (gray) → running (blue) → success (lime); failed shows pink"
 ```
 
@@ -131,12 +136,10 @@ curl -s "http://localhost:8000/admin/airflow-dag-runs?limit=3" | python3 scripts
 **Goal**: Open the `enrich_via_fastapi` task log and prove the four outline-named fields are present, so a single record can be traced from the source batch all the way to the warehouse row id.
 
 ```bash
-RUN_ID=$(curl -s "http://localhost:8000/admin/airflow-dag-runs?limit=1" \
-  | python3 -c "import json,sys;print(json.load(sys.stdin)['dag_runs'][0]['dag_run_id'])")
-
+# Reuse RUN_ID captured in Step 2 — same run, every step
 curl -s "http://localhost:8000/admin/airflow-task-log?dag_run_id=${RUN_ID}&task_id=enrich_via_fastapi" \
   | python3 scripts/fmt.py --type airflow-task-log \
-  --title "Task log fields — enrich_via_fastapi" \
+  --title "Task log fields — enrich_via_fastapi for $RUN_ID" \
   --why "All four outline-named fields, lifted from the live task log"
 ```
 
@@ -177,12 +180,10 @@ curl -s "http://localhost:8000/admin/disposition-summary?limit=5" \
 **Goal**: Show which downstream task `validation_branch` chose, which sibling task was skipped, and the state of each — proof that the branch is real and not a coincidence.
 
 ```bash
-RUN_ID=$(curl -s "http://localhost:8000/admin/airflow-dag-runs?limit=1" \
-  | python3 -c "import json,sys;print(json.load(sys.stdin)['dag_runs'][0]['dag_run_id'])")
-
+# Reuse RUN_ID captured in Step 2 — the branch decision for THIS run
 curl -s "http://localhost:8000/admin/airflow-branch-decision?dag_run_id=${RUN_ID}" \
   | python3 scripts/fmt.py --type airflow-branch \
-  --title "validation_branch decision for this run" \
+  --title "validation_branch decision for $RUN_ID" \
   --why "Dynamic branch chose downstream_taken; downstream_skipped did not run"
 ```
 
