@@ -1285,6 +1285,261 @@ def fmt_decisions(data: Any) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# Module 3 — Airflow formatters
+#
+# Six unique formatters, one per Module 3 demo step. Every formatter
+# follows the same spacing rules as the Module 2 formatters: every ★ on
+# its own line, blank line between consecutive ★ items, blank line
+# before a section header, two trailing blank lines so the shell prompt
+# has breathing room. Long values wrap via _hi_wrap / _ctx_wrap.
+# ---------------------------------------------------------------------------
+
+
+def _state_color(state: str) -> str:
+    s = (state or "").lower()
+    if s == "queued":
+        return GRAY
+    if s == "running":
+        return BLUE
+    if s == "success":
+        return LIME
+    if s in ("failed", "error", "upstream_failed"):
+        return PINK
+    if s == "skipped":
+        return GRAY
+    return LGRN
+
+
+def fmt_airflow_dag(data: dict) -> str:
+    """Module 3 Step 1 — DAG topology with static + dynamic branch tasks."""
+    lines: list[str] = []
+    lines.extend(_maybe_heading("northwind_llm_enrichment DAG"))
+
+    dag_id = data.get("dag_id", "")
+    backend = data.get("backend", "")
+    tasks = data.get("tasks", []) or []
+    static_tasks = data.get("static_tasks", []) or []
+    dynamic_branches = data.get("dynamic_branches", []) or []
+
+    lines.append(_hi_wrap("dag_id", dag_id))
+    lines.append("")
+    lines.append(_hi_wrap("task count", str(len(tasks))))
+    lines.append("")
+    lines.append(_hi_wrap("backend", backend))
+    lines.append("")
+    lines.append(f"  {BLUE}static transform tasks:{RESET}")
+    lines.append("")
+    for t in static_tasks:
+        lines.append(f"  {PINK}★{RESET} {LGRN}{t}{RESET}")
+        lines.append("")
+    lines.append(f"  {BLUE}dynamic branch tasks:{RESET}")
+    lines.append("")
+    for t in dynamic_branches:
+        lines.append(f"  {PINK}★{RESET} {LGRN}{t}{RESET}")
+        lines.append("")
+    # Trailing pad
+    # TRAILING-PAD-MARKER
+    lines.append("")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def fmt_airflow_trigger(data: dict) -> str:
+    """Module 3 Step 2 — trigger response (dag_run_id, queued, logical_date)."""
+    lines: list[str] = []
+    lines.extend(_maybe_heading("DAG run triggered"))
+
+    run_id = str(data.get("dag_run_id", ""))
+    state = str(data.get("state", "queued"))
+    logical = str(data.get("logical_date", "") or data.get("execution_date", ""))
+    backend = str(data.get("backend", ""))
+
+    lines.append(_hi_wrap("dag_run_id", run_id))
+    lines.append("")
+    color = _state_color(state)
+    lines.append(
+        f"  {PINK}★{RESET} {BLUE}state:{RESET} {color}{state}{RESET}"
+    )
+    lines.append("")
+    lines.append(_hi_wrap("logical_date", logical))
+    lines.append("")
+    lines.append(_ctx_wrap("backend", backend))
+    # Trailing pad
+    # TRAILING-PAD-MARKER
+    lines.append("")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def fmt_airflow_dag_runs(data: dict) -> str:
+    """Module 3 Step 3 — state transitions table (queued/running/success)."""
+    lines: list[str] = []
+    lines.extend(_maybe_heading("northwind_llm_enrichment DAG runs"))
+
+    runs = data.get("dag_runs", []) or []
+    lines.append(_hi_wrap("runs shown", str(len(runs))))
+    lines.append("")
+    lines.append(
+        f"  {BLUE}{'dag_run_id':<46}{RESET}  "
+        f"{BLUE}{'state':<10}{RESET}  "
+        f"{BLUE}duration_seconds{RESET}"
+    )
+    lines.append("")
+    for r in runs:
+        run_id = str(r.get("dag_run_id", ""))[:44]
+        state = str(r.get("state", ""))
+        color = _state_color(state)
+        dur = r.get("duration_seconds")
+        dur_str = f"{dur:.1f}s" if isinstance(dur, (int, float)) else "—"
+        lines.append(
+            f"  {PINK}★{RESET} {LGRN}{run_id:<44}{RESET}  "
+            f"{color}{state:<8}{RESET}  "
+            f"{LGRN}{dur_str}{RESET}"
+        )
+        lines.append("")
+    # State legend so the audience sees what each color means
+    lines.append(f"  {BLUE}state legend:{RESET}  "
+                 f"{GRAY}queued{RESET}  "
+                 f"{BLUE}running{RESET}  "
+                 f"{LIME}success{RESET}  "
+                 f"{PINK}failed{RESET}")
+    # Trailing pad
+    # TRAILING-PAD-MARKER
+    lines.append("")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def fmt_airflow_task_log(data: dict) -> str:
+    """Module 3 Step 4 — extract the 4 outline-named fields from task log."""
+    lines: list[str] = []
+    lines.extend(_maybe_heading("Airflow task log fields"))
+
+    task_id = str(data.get("task_id", ""))
+    if task_id:
+        lines.append(_ctx_wrap("task_id", task_id))
+        lines.append("")
+
+    # The four outline-named fields, each on its own line with the ★
+    for field in ("batch_id", "request_id", "validation_result", "output_row_id"):
+        value = str(data.get(field, "") or "")
+        lines.append(_hi_wrap(field, value or "(missing)"))
+        lines.append("")
+
+    excerpt = str(data.get("raw_log_excerpt", "") or "")
+    if excerpt:
+        lines.append(f"  {BLUE}raw log excerpt:{RESET}")
+        lines.append("")
+        for log_line in excerpt.splitlines()[:8]:
+            lines.append(f"    {GRAY}{log_line}{RESET}")
+    # Trailing pad
+    # TRAILING-PAD-MARKER
+    lines.append("")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def fmt_dispositions(data: dict) -> str:
+    """Module 3 Step 5 — accepted vs quarantined dispositions + reasons."""
+    lines: list[str] = []
+    lines.extend(_maybe_heading("Disposition summary"))
+
+    accepted = data.get("trusted_count", 0)
+    quarantined = data.get("quarantine_count", 0)
+    duck_trusted = data.get("duckdb_trusted_rows")
+    duck_quar = data.get("duckdb_quarantine_rows")
+
+    lines.append(
+        f"  {PINK}★{RESET} {BLUE}accepted_count:{RESET} {LIME}{accepted}{RESET}"
+    )
+    lines.append("")
+    lines.append(
+        f"  {PINK}★{RESET} {BLUE}quarantined_count:{RESET} {PINK}{quarantined}{RESET}"
+    )
+    lines.append("")
+    if duck_trusted is not None:
+        lines.append(_ctx_wrap("duckdb trusted.feedback_enriched rows",
+                               str(duck_trusted)))
+        lines.append("")
+    if duck_quar is not None:
+        lines.append(_ctx_wrap("duckdb quarantine.llm_outputs rows",
+                               str(duck_quar)))
+        lines.append("")
+
+    recent = data.get("recent_dispositions", []) or []
+    if recent:
+        lines.append(f"  {BLUE}recent dispositions:{RESET}")
+        lines.append("")
+        for d in recent[:6]:
+            disp = str(d.get("disposition", ""))
+            disp_color = LIME if disp == "accepted" else PINK
+            req = str(d.get("request_id", ""))
+            reason = str(d.get("reason", ""))
+            batch = str(d.get("batch_id", ""))
+            lines.append(
+                f"  {PINK}★{RESET} {BLUE}request_id:{RESET} {LGRN}{req}{RESET}  "
+                f"{BLUE}disposition:{RESET} {disp_color}{disp}{RESET}"
+            )
+            lines.append(_ctx_wrap("    reason", reason))
+            lines.append(_ctx_wrap("    batch_id", batch))
+            lines.append("")
+    # Trailing pad
+    # TRAILING-PAD-MARKER
+    lines.append("")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def fmt_airflow_branch(data: dict) -> str:
+    """Module 3 Step 6 — dynamic branch decision (taken vs skipped)."""
+    lines: list[str] = []
+    lines.extend(_maybe_heading("Dynamic branch decision"))
+
+    branch_task = str(data.get("branch_task_id", ""))
+    decision = str(data.get("decision", ""))
+    upstream = str(data.get("upstream_task_state", ""))
+    taken = str(data.get("downstream_taken", ""))
+    skipped = str(data.get("downstream_skipped", ""))
+    states = data.get("downstream_states", {}) or {}
+
+    lines.append(
+        f"  {PINK}★{RESET} {BLUE}branch_task:{RESET} {LGRN}{branch_task}{RESET}"
+    )
+    lines.append("")
+    lines.append(
+        f"  {PINK}★{RESET} {BLUE}decision:{RESET} {LGRN}{decision}{RESET}"
+    )
+    lines.append("")
+    up_color = _state_color(upstream)
+    lines.append(
+        f"  {PINK}★{RESET} {BLUE}upstream_task_state:{RESET} {up_color}{upstream}{RESET}"
+    )
+    lines.append("")
+    lines.append(
+        f"  {PINK}★{RESET} {BLUE}downstream_taken:{RESET} {LIME}{taken}{RESET}"
+    )
+    lines.append("")
+    lines.append(
+        f"  {PINK}★{RESET} {BLUE}downstream_skipped:{RESET} {GRAY}{skipped}{RESET}"
+    )
+    lines.append("")
+    if states:
+        lines.append(f"  {BLUE}downstream states:{RESET}")
+        lines.append("")
+        for name, st in states.items():
+            color = _state_color(str(st))
+            lines.append(
+                f"    {BLUE}{name}:{RESET} {color}{st}{RESET}"
+            )
+            lines.append("")
+    # Trailing pad
+    # TRAILING-PAD-MARKER
+    lines.append("")
+    lines.append("")
+    return "\n".join(lines)
+
+
 FORMATTERS: dict[str, Any] = {
     "feedback": fmt_feedback,
     "dispute": fmt_dispute,
@@ -1308,6 +1563,13 @@ FORMATTERS: dict[str, Any] = {
     "trusted-rows": fmt_trusted_rows,
     "quarantine-rows": fmt_quarantine_rows,
     "retrieve": fmt_retrieve,
+    # Module 3 — Airflow formatters
+    "airflow-dag": fmt_airflow_dag,
+    "airflow-trigger": fmt_airflow_trigger,
+    "airflow-dag-runs": fmt_airflow_dag_runs,
+    "airflow-task-log": fmt_airflow_task_log,
+    "dispositions": fmt_dispositions,
+    "airflow-branch": fmt_airflow_branch,
 }
 
 
@@ -1387,9 +1649,16 @@ def main() -> None:
         # One leading blank line before the panel for Module 2 formatters
         # so the curl command above doesn't touch the new step's output box.
         # Module 1 formatters keep the tight layout.
-        _MODULE2_TYPES = {"triage", "branch", "mermaid",
-                          "tool-calls", "agent-decisions"}
-        if args.type in _MODULE2_TYPES:
+        _MODULE2_3_TYPES = {
+            "triage", "branch", "mermaid",
+            "tool-calls", "agent-decisions",
+            # Module 3 — apply the same 1-blank-before-panel rule so the
+            # curl command above the new step does not touch the new
+            # step's header box.
+            "airflow-dag", "airflow-trigger", "airflow-dag-runs",
+            "airflow-task-log", "dispositions", "airflow-branch",
+        }
+        if args.type in _MODULE2_3_TYPES:
             print()
         print(_panel(args.title, args.why))
         print()

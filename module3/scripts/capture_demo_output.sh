@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 # module3/scripts/capture_demo_output.sh — Capture golden output for Module 3 demo
-# Resets state, seeds data, runs each of the 4 demo steps, and saves output
-# to .run/module3/ for review before recording.
+# Runs each of the 6 demo steps and saves output to module3/captures/ for
+# review before recording.
 #
 # Usage:
 #   module3/scripts/capture_demo_output.sh
 
 set -euo pipefail
 
-# ── Paths ────────────────────────────────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-cd "$PROJECT_DIR"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+OUT_DIR="$REPO_ROOT/module3/captures"
+mkdir -p "$OUT_DIR"
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -20,127 +19,118 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 ok()   { printf "${GREEN}[OK]${NC}   %s\n" "$1"; }
-warn() { printf "${YELLOW}[WAIT]${NC} %s\n" "$1"; }
-fail() { printf "${RED}[ERR]${NC}  %s\n" "$1"; exit 1; }
+warn() { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
+fail() { printf "${RED}[ERR]${NC}  %s\n" "$1"; }
 
-OUTDIR="$PROJECT_DIR/.run/module3"
-mkdir -p "$OUTDIR"
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+ERRORS=0
 
-echo ""
+API="http://localhost:8000"
+FMT="$REPO_ROOT/scripts/fmt.py"
+
 echo "========================================"
 echo " Module 3 — Capture Demo Output"
+echo " $TIMESTAMP"
 echo "========================================"
 echo ""
 
-# ── Verify services are running ──────────────────────────────────────────────
-warn "Checking services..."
-
-if ! curl -sf http://localhost:8000/health &>/dev/null; then
-    fail "FastAPI is not running — start with module3/scripts/demo_up.sh first"
+if ! curl -sf "$API/health" >/dev/null 2>&1; then
+  fail "FastAPI is not running — start with module3/scripts/demo_up.sh first"
+  exit 1
 fi
 ok "FastAPI is healthy"
 
-if ! curl -sf http://localhost:8080/health &>/dev/null; then
-    fail "Airflow is not running — start with module3/scripts/demo_up.sh first"
-fi
-ok "Airflow is healthy"
-
-# ── Reset: clear pipeline metrics for a clean capture ────────────────────────
+# ── Step 1: DAG topology ────────────────────────────────────────────────────
 echo ""
-warn "Resetting pipeline state for clean capture..."
-
-# Reset by calling the metrics reset endpoint if available, otherwise proceed
-curl -sf -X POST http://localhost:8000/pipeline/reset 2>/dev/null && ok "Pipeline state reset" || warn "No reset endpoint — proceeding with current state"
-
-# ── Seed: batch-enrich the feedback payload ──────────────────────────────────
-echo ""
-warn "Seeding batch data via pipeline/batch-enrich..."
-
-SEED_RESP=$(curl -sf -X POST http://localhost:8000/pipeline/batch-enrich \
-    -H "Content-Type: application/json" \
-    -d "{\"items\": $(cat data/payloads/batch_feedback.json)}")
-
-BATCH_ID=$(echo "$SEED_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('batch_id','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
-ok "Batch seeded: $BATCH_ID"
-
-# Save seed response
-echo "$SEED_RESP" | python3 -m json.tool > "$OUTDIR/seed_response.json" 2>/dev/null || echo "$SEED_RESP" > "$OUTDIR/seed_response.json"
-ok "Seed response saved to .run/module3/seed_response.json"
-
-# ── Step 1: Trigger the Airflow DAG ─────────────────────────────────────────
-echo ""
-echo "── Step 1: Trigger DAG ──"
-
-STEP1_OUT=$(curl -s -X POST http://localhost:8000/pipeline/trigger \
-    -H "Content-Type: application/json" \
-    -d '{"batch_id": "BATCH-20240318-001", "source": "data/payloads/batch_feedback.json"}')
-
-echo "$STEP1_OUT" | python3 scripts/fmt.py --type raw > "$OUTDIR/step1_trigger.txt" 2>/dev/null || echo "$STEP1_OUT" > "$OUTDIR/step1_trigger.txt"
-ok "Step 1 output saved to .run/module3/step1_trigger.txt"
-
-echo "$STEP1_OUT" | python3 scripts/fmt.py --type raw
-echo ""
-
-# ── Step 2: Show pipeline runs (DAG graph is visual — capture the run list) ──
-echo ""
-echo "── Step 2: Pipeline Runs ──"
-
-STEP2_OUT=$(curl -s http://localhost:8000/pipeline/runs)
-
-echo "$STEP2_OUT" | python3 scripts/fmt.py --type raw > "$OUTDIR/step2_runs.txt" 2>/dev/null || echo "$STEP2_OUT" > "$OUTDIR/step2_runs.txt"
-ok "Step 2 output saved to .run/module3/step2_runs.txt"
-
-echo "$STEP2_OUT" | python3 scripts/fmt.py --type raw
-echo ""
-
-# ── Step 3: Examine batch details for traceability ──────────────────────────
-echo ""
-echo "── Step 3: Batch Details ──"
-
-STEP3_OUT=$(curl -s "http://localhost:8000/pipeline/run/$BATCH_ID")
-
-echo "$STEP3_OUT" | python3 scripts/fmt.py --type batch > "$OUTDIR/step3_batch.txt" 2>/dev/null || echo "$STEP3_OUT" > "$OUTDIR/step3_batch.txt"
-ok "Step 3 output saved to .run/module3/step3_batch.txt"
-
-echo "$STEP3_OUT" | python3 scripts/fmt.py --type batch
-echo ""
-
-# ── Step 4: Verify DuckDB trusted and quarantine tables ─────────────────────
-echo ""
-echo "── Step 4: DuckDB Verification ──"
-
-DUCKDB_PATH="$PROJECT_DIR/data/northwind.duckdb"
-
-STEP4A_OUT=""
-STEP4B_OUT=""
-
-if command -v duckdb &>/dev/null && [[ -f "$DUCKDB_PATH" ]]; then
-    STEP4A_OUT=$(duckdb "$DUCKDB_PATH" "SELECT request_id, category, confidence, validation_status FROM trusted.feedback_enriched ORDER BY enriched_at DESC LIMIT 5" 2>&1 || echo "(query failed — table may not exist yet)")
-    STEP4B_OUT=$(duckdb "$DUCKDB_PATH" "SELECT request_id, validation_errors FROM quarantine.llm_outputs ORDER BY quarantined_at DESC LIMIT 5" 2>&1 || echo "(query failed — table may not exist yet)")
+echo "Step 1: DAG topology..."
+S1="$OUT_DIR/step1_airflow_dag_${TIMESTAMP}.json"
+if curl -sf "$API/admin/airflow-dag" -o "$S1"; then
+  ok "Step 1 captured -> $(basename "$S1")"
+  python3 "$FMT" --type airflow-dag < "$S1"
 else
-    STEP4A_OUT="(duckdb CLI not available or database file not found)"
-    STEP4B_OUT="(duckdb CLI not available or database file not found)"
+  fail "Step 1 failed — /admin/airflow-dag not reachable"
+  ERRORS=$((ERRORS + 1))
 fi
 
-echo "$STEP4A_OUT" > "$OUTDIR/step4_trusted.txt"
-echo "$STEP4B_OUT" > "$OUTDIR/step4_quarantine.txt"
-ok "Step 4 trusted output saved to .run/module3/step4_trusted.txt"
-ok "Step 4 quarantine output saved to .run/module3/step4_quarantine.txt"
+# ── Step 2: Trigger DAG ─────────────────────────────────────────────────────
+echo ""
+echo "Step 2: Trigger DAG..."
+S2="$OUT_DIR/step2_airflow_trigger_${TIMESTAMP}.json"
+if curl -sf -X POST "$API/admin/airflow-trigger" \
+     -H "Content-Type: application/json" \
+     -d @"$REPO_ROOT/data/payloads/airflow_trigger.json" -o "$S2"; then
+  ok "Step 2 captured -> $(basename "$S2")"
+  python3 "$FMT" --type airflow-trigger < "$S2"
+else
+  fail "Step 2 failed — /admin/airflow-trigger not reachable"
+  ERRORS=$((ERRORS + 1))
+fi
 
+# ── Step 3: State transitions ───────────────────────────────────────────────
 echo ""
-echo "trusted.feedback_enriched:"
-echo "$STEP4A_OUT"
+echo "Step 3: State transitions..."
+S3="$OUT_DIR/step3_airflow_dag_runs_${TIMESTAMP}.json"
+if curl -sf "$API/admin/airflow-dag-runs?limit=3" -o "$S3"; then
+  ok "Step 3 captured -> $(basename "$S3")"
+  python3 "$FMT" --type airflow-dag-runs < "$S3"
+else
+  fail "Step 3 failed — /admin/airflow-dag-runs not reachable"
+  ERRORS=$((ERRORS + 1))
+fi
+
+# Pull a real run id for steps 4 and 6
+RUN_ID=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$S3'))
+    print(d.get('dag_runs', [{}])[0].get('dag_run_id',''))
+except Exception:
+    print('')")
+
+# ── Step 4: Task log fields ─────────────────────────────────────────────────
 echo ""
-echo "quarantine.llm_outputs:"
-echo "$STEP4B_OUT"
+echo "Step 4: Task log fields..."
+S4="$OUT_DIR/step4_airflow_task_log_${TIMESTAMP}.json"
+if curl -sf "$API/admin/airflow-task-log?dag_run_id=${RUN_ID}&task_id=enrich_via_fastapi" -o "$S4"; then
+  ok "Step 4 captured -> $(basename "$S4")"
+  python3 "$FMT" --type airflow-task-log < "$S4"
+else
+  fail "Step 4 failed — /admin/airflow-task-log not reachable"
+  ERRORS=$((ERRORS + 1))
+fi
+
+# ── Step 5: Disposition summary ─────────────────────────────────────────────
 echo ""
+echo "Step 5: Disposition summary..."
+S5="$OUT_DIR/step5_dispositions_${TIMESTAMP}.json"
+if curl -sf "$API/admin/disposition-summary?limit=5" -o "$S5"; then
+  ok "Step 5 captured -> $(basename "$S5")"
+  python3 "$FMT" --type dispositions < "$S5"
+else
+  fail "Step 5 failed — /admin/disposition-summary not reachable"
+  ERRORS=$((ERRORS + 1))
+fi
+
+# ── Step 6: Branch decision ─────────────────────────────────────────────────
+echo ""
+echo "Step 6: Branch decision..."
+S6="$OUT_DIR/step6_airflow_branch_${TIMESTAMP}.json"
+if curl -sf "$API/admin/airflow-branch-decision?dag_run_id=${RUN_ID}" -o "$S6"; then
+  ok "Step 6 captured -> $(basename "$S6")"
+  python3 "$FMT" --type airflow-branch < "$S6"
+else
+  fail "Step 6 failed — /admin/airflow-branch-decision not reachable"
+  ERRORS=$((ERRORS + 1))
+fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────
-echo "========================================"
-echo " Captured files:"
 echo ""
-ls -la "$OUTDIR"/
-echo ""
-ok "All 4 demo steps captured to .run/module3/"
-echo "  Review output before recording."
 echo "========================================"
+if [ "$ERRORS" -eq 0 ]; then
+  printf "${GREEN}All 6 steps captured successfully${NC}\n"
+else
+  printf "${RED}$ERRORS step(s) failed — review output above${NC}\n"
+fi
+echo "Captures saved to: $OUT_DIR"
+echo "========================================"
+exit "$ERRORS"

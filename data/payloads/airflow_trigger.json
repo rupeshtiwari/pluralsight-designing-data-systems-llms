@@ -1,0 +1,7 @@
+{
+  "conf": {
+    "batch_id": "BATCH-2024-001",
+    "source": "raw.feedback",
+    "feedback_ids": [1, 99]
+  }
+}

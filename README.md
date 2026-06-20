@@ -133,6 +133,20 @@ repo-root/
 
 The setup script verifies all prerequisites, creates `.venv`, installs dependencies, builds Docker images, seeds DuckDB, and runs validation. If anything fails it stops with a clear error message.
 
+The macOS installer also pre-pulls `apache/airflow:2.10.3` and confirms port 8080 is free, so Module 3 is ready to record without a multi-minute image pull on first run. A full transcript is written to `environment-setup/install.log` for support.
+
+### Start the Module 3 demo (fresh Mac)
+
+A student with only macOS installed can reach a working Module 3 demo with these three commands:
+
+```bash
+environment-setup/install-macos-requirements.sh        # one-time install + Airflow readiness
+docker compose up -d airflow-webserver airflow-scheduler
+./scripts/module3-demo-reset.sh                        # FastAPI + DuckDB + one seeded run
+```
+
+Then run `module3/scripts/preflight_check.sh` to verify all six demo steps before recording.
+
 ### Start the demo
 
 ```bash
@@ -358,6 +372,12 @@ Proof points to verify:
 | GET | /pipeline/runs | List recent pipeline runs |
 | GET | /pipeline/run/{batch_id} | Get batch run details |
 | POST | /pipeline/trigger | Simulate Airflow DAG trigger |
+| GET | /admin/airflow-dag | Module 3 — `northwind_llm_enrichment` DAG topology (static + dynamic tasks) |
+| POST | /admin/airflow-trigger | Module 3 — Trigger a DAG run from a batch payload |
+| GET | /admin/airflow-dag-runs | Module 3 — Recent DAG runs with state transitions |
+| GET | /admin/airflow-task-log | Module 3 — Task-log fields (batch_id, request_id, validation_result, output_row_id) |
+| GET | /admin/airflow-branch-decision | Module 3 — Dynamic branch: which downstream task ran versus skipped |
+| GET | /admin/disposition-summary | Module 3 — Accepted vs quarantined counts with reasons |
 | POST | /validate/output | Validate raw LLM output |
 | GET | /validate/rules | Get validation configuration |
 | POST | /validate/batch-report | Get batch validation summary |

@@ -35,7 +35,7 @@ services:
         condition: service_healthy
 
   airflow-webserver:
-    image: apache/airflow:2.9.3-python3.12
+    image: apache/airflow:2.10.3
     container_name: northwind-airflow-webserver
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -58,7 +58,7 @@ services:
         condition: service_healthy
 
   airflow-scheduler:
-    image: apache/airflow:2.9.3-python3.12
+    image: apache/airflow:2.10.3
     container_name: northwind-airflow-scheduler
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor

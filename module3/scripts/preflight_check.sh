@@ -7,7 +7,8 @@ set -euo pipefail
 # Runs every demo step in the same sequence as the README, captures each
 # command and its output, and saves a structured log to module3/preflight_log.txt.
 #
-# Use the log to verify that demo steps align with the learning objectives.
+# Maps each step to its on-screen proof and to the learning objective,
+# and prints fix prompts on any failure.
 #
 # Usage:
 #   module3/scripts/preflight_check.sh
@@ -21,33 +22,28 @@ API="http://localhost:8000"
 TMPD=$(mktemp -d)
 trap 'rm -rf "$TMPD"' EXIT
 
-# ── Colors ──────────────────────────────────────────────────────────────────
-# Pluralsight 2025 brand colors
-PINK='\033[38;2;255;22;117m'     # Transform Pink
-GREEN='\033[38;2;207;255;110m'   # Lime Green
-
-LGREEN='\033[38;2;64;255;191m'   # Limited Green
-GRAY='\033[38;2;191;191;191m'    # Light Gray
-WHITE='\033[1;37m'               # White bold
+# ── Colors (Pluralsight 2025 brand) ─────────────────────────────────────────
+PINK='\033[38;2;255;22;117m'
+GREEN='\033[38;2;207;255;110m'
+LGREEN='\033[38;2;64;255;191m'
 BLUE='\033[38;2;42;236;250m'
-BOLD='\033[1m'
+GRAY='\033[38;2;191;191;191m'
+WHITE='\033[1;37m'
 DIM='\033[2m'
+BOLD='\033[1m'
 NC='\033[0m'
 
 ERRORS=0
 
-pass() {
-  printf "  ${GREEN}✓ PASS${NC}  %s\n" "$1"
-}
-fail_check() {
-  printf "  ${PINK}✗ FAIL${NC}  %s\n" "$1"
-  ERRORS=$((ERRORS + 1))
-}
-detail() {
-  printf "           ${GRAY}%s${NC}\n" "$1"
-}
-fix() {
-  printf "    ${BLUE}→ Fix:${NC} %s\n" "$1"
+pass()       { printf "  ${GREEN}✓ PASS${NC}  %s\n" "$1"; }
+fail_check() { printf "  ${PINK}✗ FAIL${NC}  %s\n" "$1"; ERRORS=$((ERRORS + 1)); }
+detail()     { printf "           ${GRAY}%s${NC}\n" "$1"; }
+fix()        { printf "    ${BLUE}→ Fix:${NC} %s\n" "$1"; }
+highlight()  { printf "  ${PINK}★${NC} ${BLUE}%s${NC} ${LGREEN}%s${NC}\n" "$1" "$2"; }
+field()      { printf "    ${GRAY}%s${NC} ${GRAY}%s${NC}\n" "$1" "$2"; }
+show_command() {
+  printf "\n  ${DIM}Command:${NC}\n"
+  printf "  ${DIM}\$${NC} %s\n\n" "$1"
 }
 step_header() {
   echo ""
@@ -56,21 +52,7 @@ step_header() {
   printf "${BLUE}  Learning objective: %s${NC}\n" "$3"
   printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 }
-show_command() {
-  printf "\n  ${DIM}Command:${NC}\n"
-  printf "  ${DIM}\$${NC} %s\n\n" "$1"
-}
-# highlight: a KEY property the author reads aloud on camera.
-# Label in Blue, value in Limited Green, marked with ★ so it stands out.
-highlight() {
-  printf "  ${PINK}★${NC} ${BLUE}%s${NC} ${LGREEN}%s${NC}\n" "$1" "$2"
-}
-# field: a supporting value shown for context but not narrated.
-field() {
-  printf "    ${GRAY}%s${NC} ${GRAY}%s${NC}\n" "$1" "$2"
-}
 
-# ── Log helpers ─────────────────────────────────────────────────────────────
 log() { echo "$1" >> "$LOG"; }
 log_divider() {
   log ""
@@ -80,7 +62,6 @@ log_divider() {
   log ""
 }
 
-# ── Start log ───────────────────────────────────────────────────────────────
 cat > "$LOG" <<HEADER
 ================================================================================
 MODULE 3 — CLIP 4 PREFLIGHT LOG
@@ -97,365 +78,361 @@ Learning objectives:
 
 HEADER
 
-# ── Header ──────────────────────────────────────────────────────────────────
 echo ""
 printf "${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}\n"
-printf "${BOLD}║  Module 3 Clip 4 — Preflight Check                        ║${NC}\n"
-printf "${BOLD}║  Airflow enrichment pipeline with FastAPI and DuckDB       ║${NC}\n"
+printf "${BOLD}║  Module 3 Clip 4 — Preflight Check                          ║${NC}\n"
+printf "${BOLD}║  Airflow enrichment pipeline with FastAPI and DuckDB        ║${NC}\n"
 printf "${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
-
-# ── Reset to a clean baseline ────────────────────────────────────────────────
-# Always reset first so the preflight is reproducible no matter what ran before.
-echo ""
-printf "  ${DIM}Resetting to a clean baseline...${NC}\n"
-if [[ -x "$PROJECT_ROOT/scripts/module1-demo-reset.sh" ]]; then
-  "$PROJECT_ROOT/scripts/module1-demo-reset.sh" >/dev/null 2>&1 || true
-fi
 
 # ── Server check ────────────────────────────────────────────────────────────
 echo ""
 printf "  ${DIM}Checking server at ${API}...${NC}\n"
-
 if ! curl -sf "$API/health" >/dev/null 2>&1; then
   fail_check "Server is not running at $API"
-  fix "module3/scripts/demo-reset.sh"
-  detail "The reset script will start a fresh server with seed data."
+  fix "./scripts/module3-demo-reset.sh"
   echo "Server not running" >> "$LOG"
-  echo ""
-  printf "${PINK}${BOLD}Cannot continue without a running server. Exiting.${NC}\n\n"
   exit 1
 fi
 pass "Server is healthy"
 log "Server: healthy"
 
-# Seed knowledge base silently
-curl -sf -X POST "$API/admin/seed-knowledge-base" >/dev/null 2>&1
-log "Knowledge base: seeded"
+# Detect Airflow backend (airflow vs memory)
+BACKEND=$(curl -sf "$API/admin/airflow-dag" \
+  | python3 -c "import json,sys;print(json.load(sys.stdin).get('backend','?'))" 2>/dev/null || echo "?")
+log "Airflow backend: $BACKEND"
+printf "  ${DIM}Airflow backend: ${BLUE}%s${NC}\n" "$BACKEND"
 
 # ═════════════════════════════════════════════════════════════════════════════
-# STEP 1 (LO 3b, 3c)
+# STEP 1 (LO 3a) — DAG topology
 # ═════════════════════════════════════════════════════════════════════════════
-TRIGGER_CMD='curl -s -X POST http://localhost:8000/pipeline/trigger -H "Content-Type: application/json" -d '"'"'{"batch_id":"BATCH-20240318-001","source":"data/payloads/batch_feedback.json"}'"'"' | python3 -m json.tool'
+step_header "1/6" "Show the DAG topology" "3a — Static DAG + dynamic branch"
+show_command "curl -s $API/admin/airflow-dag | python3 scripts/fmt.py --type airflow-dag"
 
-step_header "1/4" "Trigger the pipeline" "3b, 3c — Integrating LLM logic into orchestration; trigger and monitor"
-show_command "$TRIGGER_CMD"
-
-log_divider "STEP 1: Trigger the pipeline (LO 3b, 3c)"
+log_divider "STEP 1: Show the DAG topology (LO 3a)"
 log "COMMAND:"
-log "  $TRIGGER_CMD"
+log "  curl -s $API/admin/airflow-dag"
 log ""
 
-TRIGGER_RESP=$(curl -sf -X POST "$API/pipeline/trigger" \
-  -H "Content-Type: application/json" \
-  -d '{"batch_id":"BATCH-20240318-001","source":"data/payloads/batch_feedback.json"}')
-echo "$TRIGGER_RESP" | python3 -m json.tool > "$TMPD/step1.json" 2>&1
-
+DAG_JSON=$(curl -sf "$API/admin/airflow-dag")
+echo "$DAG_JSON" | python3 -m json.tool > "$TMPD/step1.json" 2>&1
 log "OUTPUT:"
 cat "$TMPD/step1.json" >> "$LOG"
 log ""
 
-TRIGGER_STATUS=$(echo "$TRIGGER_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('status','MISSING'))")
-TRIGGER_BATCH=$(echo "$TRIGGER_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('batch_id','MISSING'))")
-TRIGGER_DAG=$(echo "$TRIGGER_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('dag_id','MISSING'))")
+DAG_ID=$(echo "$DAG_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('dag_id',''))")
+TASK_COUNT=$(echo "$DAG_JSON" | python3 -c "import json,sys;print(len(json.load(sys.stdin).get('tasks',[])))")
+STATIC=$(echo "$DAG_JSON" | python3 -c "import json,sys;print(','.join(json.load(sys.stdin).get('static_tasks',[])))")
+BRANCHES=$(echo "$DAG_JSON" | python3 -c "import json,sys;print(','.join(json.load(sys.stdin).get('dynamic_branches',[])))")
 
-highlight "status:" "$TRIGGER_STATUS"
-highlight "batch_id:" "$TRIGGER_BATCH"
-field     "dag_id:" "$TRIGGER_DAG"
-echo ""
-printf "  ${GRAY}★ = read these values aloud on camera${NC}\n"
+highlight "dag_id:"             "$DAG_ID"
+highlight "task count:"         "$TASK_COUNT"
+highlight "static_tasks:"       "$STATIC"
+highlight "dynamic_branches:"   "$BRANCHES"
 echo ""
 
 log "EXTRACTED VALUES:"
-log "  batch_id: $TRIGGER_BATCH"
-log "  dag_id:   $TRIGGER_DAG"
-log "  status:   $TRIGGER_STATUS"
+log "  dag_id:           $DAG_ID"
+log "  task_count:       $TASK_COUNT"
+log "  static_tasks:     $STATIC"
+log "  dynamic_branches: $BRANCHES"
 log ""
-log "LO COVERAGE:"
-log "  3b — Pipeline trigger returns batch_id and dag_id, showing LLM integration into orchestration"
-log "  3c — Trigger creates a pipeline run record that can be monitored"
+log "LO COVERAGE: 3a — Three static transform tasks plus one dynamic branch task"
 
-# Check: status = triggered
-if [[ "$TRIGGER_STATUS" == "triggered" ]]; then
-  pass "status = triggered"
-  detail "Pipeline trigger returned the expected status."
-  log "RESULT: PASS — status = triggered"
+if [[ "$DAG_ID" == "northwind_llm_enrichment" ]]; then
+  pass "dag_id = northwind_llm_enrichment"
+  log "RESULT: PASS — dag_id correct"
 else
-  fail_check "status = $TRIGGER_STATUS (expected triggered)"
-  fix "Check app/routers/pipeline.py trigger_dag() return value"
-  detail "The trigger endpoint should return status=triggered."
-  log "RESULT: FAIL — status = $TRIGGER_STATUS"
+  fail_check "dag_id = $DAG_ID (expected northwind_llm_enrichment)"
+  fix "Verify airflow/dags/northwind_llm_enrichment.py exposes the dag_id"
+  log "RESULT: FAIL — dag_id wrong"
 fi
-
-# Check: batch_id present
-if [[ -n "$TRIGGER_BATCH" && "$TRIGGER_BATCH" != "MISSING" ]]; then
-  pass "batch_id = $TRIGGER_BATCH (tracking ID assigned)"
-  log "RESULT: PASS — batch_id present"
-else
-  fail_check "batch_id is missing from trigger response"
-  fix "Check app/routers/pipeline.py trigger_dag() return value"
-  log "RESULT: FAIL — batch_id missing"
-fi
+for t in extract_batch transform enrich_via_fastapi; do
+  if echo ",$STATIC," | grep -q ",$t,"; then
+    pass "static task present: $t"
+  else
+    fail_check "static task missing: $t"
+    fix "Add $t to the DAG in airflow/dags/northwind_llm_enrichment.py"
+  fi
+done
+for t in validation_branch write_trusted write_quarantine; do
+  if echo "$BRANCHES" | grep -q "$t"; then
+    pass "dynamic branch task present: $t"
+  else
+    fail_check "dynamic branch task missing: $t"
+    fix "Add $t to the branch downstream in airflow/dags/northwind_llm_enrichment.py"
+  fi
+done
 
 # ═════════════════════════════════════════════════════════════════════════════
-# STEP 2 (LO 3a)
+# STEP 2 (LO 3c) — Trigger the DAG
 # ═════════════════════════════════════════════════════════════════════════════
-step_header "2/4" "Show pipeline run results" "3a — Compare static DAGs with dynamic orchestration"
-show_command "curl -s http://localhost:8000/pipeline/runs | python3 -m json.tool"
+step_header "2/6" "Trigger the DAG from a new source batch" "3c — Trigger and monitor"
+show_command "curl -s -X POST $API/admin/airflow-trigger -H 'Content-Type: application/json' -d @data/payloads/airflow_trigger.json | python3 scripts/fmt.py --type airflow-trigger"
 
-log_divider "STEP 2: Show pipeline run results (LO 3a)"
-log "COMMAND:"
-log "  curl -s http://localhost:8000/pipeline/runs | python3 -m json.tool"
+log_divider "STEP 2: Trigger the DAG (LO 3c)"
+log "INPUT PAYLOAD (data/payloads/airflow_trigger.json):"
+cat "$PROJECT_ROOT/data/payloads/airflow_trigger.json" >> "$LOG"
 log ""
 
-RUNS_RESP=$(curl -sf "$API/pipeline/runs")
-echo "$RUNS_RESP" | python3 -m json.tool > "$TMPD/step2.json" 2>&1
-
+TRIG=$(curl -sf -X POST "$API/admin/airflow-trigger" \
+  -H "Content-Type: application/json" \
+  -d @"$PROJECT_ROOT/data/payloads/airflow_trigger.json")
+echo "$TRIG" | python3 -m json.tool > "$TMPD/step2.json" 2>&1
 log "OUTPUT:"
 cat "$TMPD/step2.json" >> "$LOG"
 log ""
 
-RUN_COUNT=$(echo "$RUNS_RESP" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
+DAG_RUN_ID=$(echo "$TRIG" | python3 -c "import json,sys;print(json.load(sys.stdin).get('dag_run_id',''))")
+TRIG_STATE=$(echo "$TRIG" | python3 -c "import json,sys;print(json.load(sys.stdin).get('state',''))")
+LOGICAL=$(echo "$TRIG" | python3 -c "import json,sys;print(json.load(sys.stdin).get('logical_date',''))")
 
-highlight "pipeline runs returned:" "$RUN_COUNT"
-echo ""
-printf "  ${GRAY}★ = read this value aloud on camera${NC}\n"
+highlight "dag_run_id:"     "$DAG_RUN_ID"
+highlight "state:"          "$TRIG_STATE"
+highlight "logical_date:"   "$LOGICAL"
 echo ""
 
 log "EXTRACTED VALUES:"
-log "  pipeline_run_count: $RUN_COUNT"
+log "  dag_run_id:    $DAG_RUN_ID"
+log "  state:         $TRIG_STATE"
+log "  logical_date:  $LOGICAL"
 log ""
-log "LO COVERAGE:"
-log "  3a — Pipeline runs list shows run records with status fields, contrasting dynamic"
-log "       enrichment DAG (with accepted/rejected branching) vs. static reconciliation DAG"
+log "LO COVERAGE: 3c — Trigger returns dag_run_id + initial queued state"
 
-# Check: at least one run
+if [[ -n "$DAG_RUN_ID" ]]; then
+  pass "dag_run_id assigned"
+else
+  fail_check "dag_run_id missing from trigger response"
+  fix "Check app/clients/airflow.py trigger_dag_run() return value"
+fi
+if [[ "$TRIG_STATE" == "queued" || "$TRIG_STATE" == "running" || "$TRIG_STATE" == "success" ]]; then
+  pass "state = $TRIG_STATE"
+else
+  fail_check "state = $TRIG_STATE (expected queued|running|success)"
+  fix "Verify the Airflow client returns a valid state field"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+# STEP 3 (LO 3c) — State transitions
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "3/6" "Watch state transitions (queued → running → success)" "3c — Monitor pipeline tasks"
+show_command "curl -s '$API/admin/airflow-dag-runs?limit=3' | python3 scripts/fmt.py --type airflow-dag-runs"
+
+log_divider "STEP 3: State transitions (LO 3c)"
+RUNS_JSON=$(curl -sf "$API/admin/airflow-dag-runs?limit=3")
+echo "$RUNS_JSON" | python3 -m json.tool > "$TMPD/step3.json" 2>&1
+log "OUTPUT:"
+cat "$TMPD/step3.json" >> "$LOG"
+log ""
+
+RUN_COUNT=$(echo "$RUNS_JSON" | python3 -c "import json,sys;print(len(json.load(sys.stdin).get('dag_runs',[])))")
+LATEST_STATE=$(echo "$RUNS_JSON" | python3 -c "
+import json,sys
+d=json.load(sys.stdin).get('dag_runs',[])
+print(d[0].get('state','') if d else '')")
+LATEST_RUN=$(echo "$RUNS_JSON" | python3 -c "
+import json,sys
+d=json.load(sys.stdin).get('dag_runs',[])
+print(d[0].get('dag_run_id','') if d else '')")
+
+highlight "runs shown:"     "$RUN_COUNT"
+highlight "latest state:"   "$LATEST_STATE"
+field     "latest run:"     "$LATEST_RUN"
+echo ""
+
+log "EXTRACTED VALUES:"
+log "  runs:          $RUN_COUNT"
+log "  latest state:  $LATEST_STATE"
+log "  latest run id: $LATEST_RUN"
+log ""
+log "LO COVERAGE: 3c — Run history with state + duration_seconds visible from CLI"
+
 if [[ "$RUN_COUNT" -ge 1 ]]; then
-  pass "pipeline/runs returned $RUN_COUNT run(s)"
-  detail "At least one pipeline run is present (from Step 1 trigger)."
-  log "RESULT: PASS — $RUN_COUNT run(s) found"
+  pass "dag_runs returned $RUN_COUNT row(s)"
 else
-  fail_check "pipeline/runs returned 0 runs (expected at least 1)"
-  fix "Rerun Step 1: curl -s -X POST $API/pipeline/trigger ..."
-  detail "The trigger in Step 1 should have created a pipeline run record."
-  log "RESULT: FAIL — no runs found"
+  fail_check "dag_runs returned 0 rows"
+  fix "Run Step 2 first to trigger a DAG run, or run ./scripts/module3-demo-reset.sh"
+fi
+if [[ -n "$LATEST_STATE" ]]; then
+  pass "latest run carries a state field: $LATEST_STATE"
+else
+  fail_check "latest run is missing the state field"
+  fix "Check app/clients/airflow.py list_dag_runs() — state must be set"
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-# STEP 3 (LO 3b, 3c) — batch-enrich then examine batch details
+# STEP 4 (LO 3b) — Task log fields
 # ═════════════════════════════════════════════════════════════════════════════
-step_header "3/4" "Examine batch details for traceability" "3b, 3c — LLM integration and task monitoring"
+step_header "4/6" "Inspect task log for batch_id, request_id, validation_result, output_row_id" "3b — Integrate LLM logic into orchestration"
+show_command "curl -s \"$API/admin/airflow-task-log?dag_run_id=\$RUN_ID&task_id=enrich_via_fastapi\" | python3 scripts/fmt.py --type airflow-task-log"
 
-# First, run batch-enrich to populate data
-ENRICH_CMD='curl -s -X POST http://localhost:8000/pipeline/batch-enrich -H "Content-Type: application/json" -d "{\"items\": $(cat data/payloads/batch_feedback.json)}"'
-
-printf "\n  ${DIM}Populating batch data via batch-enrich...${NC}\n"
-show_command "$ENRICH_CMD"
-
-log_divider "STEP 3: Examine batch details for traceability (LO 3b, 3c)"
-log "SETUP COMMAND (populate batch data):"
-log "  $ENRICH_CMD"
-log ""
-
-PAYLOAD_ITEMS=$(cat "$PROJECT_ROOT/data/payloads/batch_feedback.json")
-ENRICH_RESP=$(curl -sf -X POST "$API/pipeline/batch-enrich" \
-  -H "Content-Type: application/json" \
-  -d "{\"items\": $PAYLOAD_ITEMS}")
-echo "$ENRICH_RESP" | python3 -m json.tool > "$TMPD/step3_enrich.json" 2>&1
-
-log "BATCH-ENRICH OUTPUT:"
-cat "$TMPD/step3_enrich.json" >> "$LOG"
-log ""
-
-BATCH_ID=$(echo "$ENRICH_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin)['batch_id'])")
-
-# Now query the batch details
-DETAIL_CMD="curl -s http://localhost:8000/pipeline/run/$BATCH_ID | python3 -m json.tool"
-
-show_command "$DETAIL_CMD"
-
-log "QUERY COMMAND:"
-log "  $DETAIL_CMD"
-log ""
-
-BATCH_RESP=$(curl -sf "$API/pipeline/run/$BATCH_ID")
-echo "$BATCH_RESP" | python3 -m json.tool > "$TMPD/step3_detail.json" 2>&1
-
-log "BATCH DETAIL OUTPUT:"
-cat "$TMPD/step3_detail.json" >> "$LOG"
-log ""
-
-BATCH_TOTAL=$(echo "$ENRICH_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin)['total'])")
-BATCH_ACCEPTED=$(echo "$ENRICH_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin)['accepted'])")
-BATCH_REJECTED=$(echo "$ENRICH_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin)['rejected'])")
-
-highlight "total:" "$BATCH_TOTAL"
-highlight "accepted:" "$BATCH_ACCEPTED"
-highlight "rejected:" "$BATCH_REJECTED"
-field     "batch_id:" "$BATCH_ID"
-echo ""
-printf "  ${GRAY}★ = read these values aloud on camera${NC}\n"
-echo ""
-
-log "EXTRACTED VALUES:"
-log "  batch_id:  $BATCH_ID"
-log "  total:     $BATCH_TOTAL"
-log "  accepted:  $BATCH_ACCEPTED"
-log "  rejected:  $BATCH_REJECTED"
-log ""
-log "LO COVERAGE:"
-log "  3b — Batch enrichment shows LLM logic integrated into an orchestrated pipeline"
-log "  3c — Per-item details (request_id, category, validation_status) enable task monitoring"
-
-# Check: total = 5
-if [[ "$BATCH_TOTAL" -eq 5 ]]; then
-  pass "total = $BATCH_TOTAL (all 5 batch items processed)"
-  log "RESULT: PASS — total = $BATCH_TOTAL"
-else
-  fail_check "total = $BATCH_TOTAL (expected 5)"
-  fix "Check data/payloads/batch_feedback.json has 5 items"
-  detail "The batch_feedback.json payload should contain exactly 5 feedback items."
-  log "RESULT: FAIL — total = $BATCH_TOTAL"
-fi
-
-# Check: accepted = 3
-if [[ "$BATCH_ACCEPTED" -eq 3 ]]; then
-  pass "accepted = $BATCH_ACCEPTED (3 items passed validation)"
-  log "RESULT: PASS — accepted = $BATCH_ACCEPTED"
-else
-  fail_check "accepted = $BATCH_ACCEPTED (expected 3)"
-  fix "Check app/services/llm.py keyword classification and app/validators/output_validator.py"
-  detail "Three of the five feedback items should pass all validation checks."
-  detail "Verify that the LLM stub classifies correctly and that the validator"
-  detail "thresholds have not changed."
-  log "RESULT: FAIL — accepted = $BATCH_ACCEPTED"
-fi
-
-# Check: rejected = 2
-if [[ "$BATCH_REJECTED" -eq 2 ]]; then
-  pass "rejected = $BATCH_REJECTED (2 items sent to quarantine)"
-  detail "Rejected items have specific error messages explaining why they failed."
-  log "RESULT: PASS — rejected = $BATCH_REJECTED"
-else
-  fail_check "rejected = $BATCH_REJECTED (expected 2)"
-  fix "Check app/validators/output_validator.py validation rules"
-  detail "Two of the five feedback items should fail validation and be quarantined."
-  log "RESULT: FAIL — rejected = $BATCH_REJECTED"
-fi
-
-# ═════════════════════════════════════════════════════════════════════════════
-# STEP 4 (LO 3c, 3d)
-# ═════════════════════════════════════════════════════════════════════════════
-step_header "4/4" "Verify trusted output and quarantine tables" "3c, 3d — Monitoring pipeline tasks; guardrails and validation"
-show_command "curl -s http://localhost:8000/admin/metrics | python3 -m json.tool"
-
-log_divider "STEP 4: Verify trusted output and quarantine tables (LO 3c, 3d)"
-log "COMMAND:"
-log "  curl -s http://localhost:8000/admin/metrics | python3 -m json.tool"
-log ""
-
-METRICS=$(curl -sf "$API/admin/metrics")
-echo "$METRICS" | python3 -m json.tool > "$TMPD/step4.json" 2>&1
-
+log_divider "STEP 4: Task log fields (LO 3b)"
+LOG_JSON=$(curl -sf "$API/admin/airflow-task-log?dag_run_id=${LATEST_RUN}&task_id=enrich_via_fastapi")
+echo "$LOG_JSON" | python3 -m json.tool > "$TMPD/step4.json" 2>&1
 log "OUTPUT:"
 cat "$TMPD/step4.json" >> "$LOG"
 log ""
 
-TRUSTED=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['trusted_enriched'])")
-QUARANTINE=$(echo "$METRICS" | python3 -c "import json,sys; print(json.load(sys.stdin)['duckdb']['quarantine_outputs'])")
+BATCH_ID=$(echo "$LOG_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('batch_id',''))")
+REQ_ID=$(echo "$LOG_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('request_id',''))")
+VAL_RES=$(echo "$LOG_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('validation_result',''))")
+ROW_ID=$(echo "$LOG_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('output_row_id',''))")
 
-highlight "trusted_enriched:" "$TRUSTED"
-highlight "quarantine_outputs:" "$QUARANTINE"
-echo ""
-printf "  ${GRAY}★ = read these values aloud on camera${NC}\n"
+highlight "batch_id:"           "$BATCH_ID"
+highlight "request_id:"         "$REQ_ID"
+highlight "validation_result:"  "$VAL_RES"
+highlight "output_row_id:"      "$ROW_ID"
 echo ""
 
 log "EXTRACTED VALUES:"
-log "  trusted_enriched:   $TRUSTED"
-log "  quarantine_outputs: $QUARANTINE"
+log "  batch_id:           $BATCH_ID"
+log "  request_id:         $REQ_ID"
+log "  validation_result:  $VAL_RES"
+log "  output_row_id:      $ROW_ID"
 log ""
-log "LO COVERAGE:"
-log "  3c — Trusted table confirms accepted records completed the pipeline successfully"
-log "  3d — Quarantine table proves guardrails caught invalid outputs with rejection reasons"
+log "LO COVERAGE: 3b — All four outline-named fields are extractable from the task log"
 
-# Check: trusted >= 3
-if [[ "$TRUSTED" -ge 3 ]]; then
-  pass "trusted_enriched = $TRUSTED (>= 3 accepted records in trusted table)"
-  detail "Accepted records from the batch enrichment reached the trusted output."
-  log "RESULT: PASS — trusted_enriched = $TRUSTED"
+for v in BATCH_ID REQ_ID VAL_RES ROW_ID; do
+  val="${!v}"
+  if [[ -n "$val" ]]; then
+    pass "$v populated: $val"
+  else
+    fail_check "$v missing — task log parser did not find the field"
+    fix "Verify enrich_via_fastapi logs the key=value line in airflow/dags/northwind_llm_enrichment.py"
+  fi
+done
+
+# ═════════════════════════════════════════════════════════════════════════════
+# STEP 5 (LO 3d) — Disposition summary
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "5/6" "Show dispositions (accepted vs quarantined)" "3d — Guardrails and validation"
+show_command "curl -s '$API/admin/disposition-summary?limit=5' | python3 scripts/fmt.py --type dispositions"
+
+log_divider "STEP 5: Disposition summary (LO 3d)"
+DISP_JSON=$(curl -sf "$API/admin/disposition-summary?limit=5")
+echo "$DISP_JSON" | python3 -m json.tool > "$TMPD/step5.json" 2>&1
+log "OUTPUT:"
+cat "$TMPD/step5.json" >> "$LOG"
+log ""
+
+ACCEPTED=$(echo "$DISP_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('trusted_count',0))")
+QUARANTINED=$(echo "$DISP_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('quarantine_count',0))")
+RECENT=$(echo "$DISP_JSON" | python3 -c "import json,sys;print(len(json.load(sys.stdin).get('recent_dispositions',[])))")
+
+highlight "accepted_count:"     "$ACCEPTED"
+highlight "quarantined_count:"  "$QUARANTINED"
+field     "recent_dispositions:" "$RECENT"
+echo ""
+
+log "EXTRACTED VALUES:"
+log "  accepted:    $ACCEPTED"
+log "  quarantined: $QUARANTINED"
+log "  recent:      $RECENT"
+log ""
+log "LO COVERAGE: 3d — Disposition counts + reasons prove guardrails worked"
+
+if [[ "$ACCEPTED" -ge 1 ]]; then
+  pass "accepted_count = $ACCEPTED"
 else
-  fail_check "trusted_enriched = $TRUSTED (expected >= 3)"
-  fix "module3/scripts/demo-reset.sh && module3/scripts/preflight_check.sh"
-  detail "The batch enrichment in Step 3 should have promoted at least 3 accepted"
-  detail "records to the trusted table. Reset and rerun from scratch."
-  log "RESULT: FAIL — trusted_enriched = $TRUSTED"
+  fail_check "accepted_count = $ACCEPTED (expected >= 1)"
+  fix "Trigger at least one run via Step 2 or ./scripts/module3-demo-reset.sh"
+fi
+if [[ "$QUARANTINED" -ge 1 ]]; then
+  pass "quarantined_count = $QUARANTINED — the validation_branch caught at least one bad record"
+else
+  fail_check "quarantined_count = $QUARANTINED (expected >= 1)"
+  fix "Verify data/payloads/airflow_trigger.json includes feedback_id 99 (ambiguous record)"
 fi
 
-# Check: quarantine >= 2
-if [[ "$QUARANTINE" -ge 2 ]]; then
-  pass "quarantine_outputs = $QUARANTINE (>= 2 rejected records in quarantine)"
-  detail "Rejected records were caught by validation guardrails with specific reasons."
-  log "RESULT: PASS — quarantine_outputs = $QUARANTINE"
+# ═════════════════════════════════════════════════════════════════════════════
+# STEP 6 (LO 3a, 3d) — Branch decision
+# ═════════════════════════════════════════════════════════════════════════════
+step_header "6/6" "Show the dynamic branch decision" "3a, 3d — Dynamic orchestration + guardrail"
+show_command "curl -s \"$API/admin/airflow-branch-decision?dag_run_id=\$RUN_ID\" | python3 scripts/fmt.py --type airflow-branch"
+
+log_divider "STEP 6: Branch decision (LO 3a, 3d)"
+BR_JSON=$(curl -sf "$API/admin/airflow-branch-decision?dag_run_id=${LATEST_RUN}")
+echo "$BR_JSON" | python3 -m json.tool > "$TMPD/step6.json" 2>&1
+log "OUTPUT:"
+cat "$TMPD/step6.json" >> "$LOG"
+log ""
+
+BR_TASK=$(echo "$BR_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('branch_task_id',''))")
+DECISION=$(echo "$BR_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('decision',''))")
+TAKEN=$(echo "$BR_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('downstream_taken',''))")
+SKIPPED=$(echo "$BR_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('downstream_skipped',''))")
+
+highlight "branch_task:"        "$BR_TASK"
+highlight "decision:"           "$DECISION"
+highlight "downstream_taken:"   "$TAKEN"
+highlight "downstream_skipped:" "$SKIPPED"
+echo ""
+
+log "EXTRACTED VALUES:"
+log "  branch_task: $BR_TASK"
+log "  decision:    $DECISION"
+log "  taken:       $TAKEN"
+log "  skipped:     $SKIPPED"
+log ""
+log "LO COVERAGE: 3a — Dynamic branch chose a downstream task; 3d — quarantine branch is wired in"
+
+if [[ "$BR_TASK" == "validation_branch" ]]; then
+  pass "branch_task = validation_branch"
 else
-  fail_check "quarantine_outputs = $QUARANTINE (expected >= 2)"
-  fix "module3/scripts/demo-reset.sh && module3/scripts/preflight_check.sh"
-  detail "The batch enrichment in Step 3 should have quarantined at least 2 records"
-  detail "that failed validation. Reset and rerun from scratch."
-  log "RESULT: FAIL — quarantine_outputs = $QUARANTINE"
+  fail_check "branch_task = $BR_TASK (expected validation_branch)"
+  fix "Verify the @task.branch decorator stays on validation_branch in the DAG"
+fi
+if [[ -n "$TAKEN" && -n "$SKIPPED" && "$TAKEN" != "$SKIPPED" ]]; then
+  pass "downstream_taken ($TAKEN) is distinct from downstream_skipped ($SKIPPED)"
+else
+  fail_check "downstream_taken/skipped are missing or identical"
+  fix "Verify app/clients/airflow.py get_branch_decision() returns both fields"
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
 # LO COVERAGE SUMMARY
 # ═════════════════════════════════════════════════════════════════════════════
 log_divider "LEARNING OBJECTIVE COVERAGE SUMMARY"
-
-log "| LO | Covered in | Proof |"
-log "|----|------------|-------|"
-log "| 3a | Step 2 | Pipeline runs show dynamic branching (accepted/rejected) vs. static linear DAG |"
-log "| 3b | Step 1, Step 3 | Trigger returns batch_id and dag_id; batch details show per-item LLM results |"
-log "| 3c | Step 1, Step 3, Step 4 | Trigger creates trackable run; per-item traceability; trusted table confirmation |"
-log "| 3d | Step 4 | Quarantine table has >= $QUARANTINE rejected records with validation error reasons |"
+log "| LO | Covered in       | Proof |"
+log "|----|------------------|-------|"
+log "| 3a | Steps 1, 6       | Static tasks + dynamic branch in topology + branch decision |"
+log "| 3b | Step 4           | Task log carries batch_id, request_id, validation_result, output_row_id |"
+log "| 3c | Steps 2, 3       | Trigger returns dag_run_id; run history shows state transitions |"
+log "| 3d | Steps 5, 6       | Disposition counts + branch routes to quarantine on validation failure |"
 log ""
-log "All 4 learning objectives (3a, 3b, 3c, 3d) are covered by the 4 demo steps."
+log "Airflow backend: $BACKEND"
 
 echo ""
-printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 printf "${BOLD}  LO COVERAGE${NC}\n"
-printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+printf "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 echo ""
-printf "  ${BLUE}3a${NC}  Step 2      ${DIM}Dynamic branching vs. static linear DAG${NC}\n"
-printf "  ${BLUE}3b${NC}  Steps 1, 3  ${DIM}Pipeline trigger + per-item LLM results${NC}\n"
-printf "  ${BLUE}3c${NC}  Steps 1, 3, 4  ${DIM}Trigger, traceability, trusted output${NC}\n"
-printf "  ${BLUE}3d${NC}  Step 4      ${DIM}Quarantine guardrails with rejection reasons${NC}\n"
+printf "  ${BLUE}3a${NC}  Steps 1, 6  ${DIM}Static DAG topology + dynamic branch decision${NC}\n"
+printf "  ${BLUE}3b${NC}  Step 4      ${DIM}Task log fields: batch_id, request_id, validation_result, output_row_id${NC}\n"
+printf "  ${BLUE}3c${NC}  Steps 2, 3  ${DIM}Trigger DAG + state transition history${NC}\n"
+printf "  ${BLUE}3d${NC}  Steps 5, 6  ${DIM}Disposition counts + branch routes to quarantine${NC}\n"
+printf "  ${BLUE}backend${NC}  ${DIM}${BACKEND}${NC}\n"
+if [[ "$BACKEND" != "airflow" ]]; then
+  printf "  ${GRAY}(note: with docker compose up airflow-webserver the backend becomes 'airflow')${NC}\n"
+fi
 
-# ═════════════════════════════════════════════════════════════════════════════
-# VERDICT
-# ═════════════════════════════════════════════════════════════════════════════
 echo ""
 printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 if [[ $ERRORS -eq 0 ]]; then
-  printf "${GREEN}${BOLD}  ✓ ALL CHECKS PASSED — Demo is ready${NC}\n"
+  printf "${GREEN}  ✓ ALL CHECKS PASSED — Module 3 Clip 4 demo is ready${NC}\n"
   log ""
   log "VERDICT: ALL CHECKS PASSED"
 else
-  printf "${PINK}${BOLD}  ✗ $ERRORS CHECK(S) FAILED — Fix the issues above${NC}\n"
+  printf "${PINK}  ✗ $ERRORS CHECK(S) FAILED — Fix the issues above${NC}\n"
   echo ""
-  printf "  ${BLUE}Quick fix:${NC} module3/scripts/demo-reset.sh\n"
+  printf "  ${BLUE}Quick fix:${NC} ./scripts/module3-demo-reset.sh\n"
   printf "  ${BLUE}Then rerun:${NC} module3/scripts/preflight_check.sh\n"
   log ""
   log "VERDICT: $ERRORS CHECK(S) FAILED"
   log ""
   log "HOW TO FIX:"
-  log "  1. Reset the environment:"
-  log "     module3/scripts/demo-reset.sh"
-  log ""
-  log "  2. Rerun the preflight check:"
-  log "     module3/scripts/preflight_check.sh"
-  log ""
-  log "  3. If reset does not fix it, check:"
-  log "     - Is the server running? curl -s http://localhost:8000/health"
-  log "     - Are seed files present? ls data/seed/"
-  log "     - Are payloads present? ls data/payloads/"
-  log "     - Run full setup: ./environment-setup/install-macos-requirements.sh"
+  log "  1. Reset the environment: ./scripts/module3-demo-reset.sh"
+  log "  2. Rerun the preflight:   module3/scripts/preflight_check.sh"
+  log "  3. If still failing:      check Airflow at http://localhost:8080 (admin/admin)"
 fi
 printf "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 echo ""

@@ -239,6 +239,77 @@ async def list_admin_agent_decisions(
     }
 
 
+# ---------------------------------------------------------------------------
+# Module 3 Clip 4 — Airflow admin endpoints
+#
+# Wrap the Airflow REST API behind /admin/airflow-* so the demo flow uses
+# the same FastAPI + fmt pattern as Modules 1 and 2. When the Airflow
+# webserver is reachable (real `docker compose up airflow-webserver`),
+# the client returns live data; otherwise it returns the same JSON shape
+# from a memory stub so the demo still runs end-to-end.
+# ---------------------------------------------------------------------------
+
+
+@app.get("/admin/airflow-dag")
+async def get_airflow_dag() -> dict:
+    """DAG topology — static tasks + dynamic branch tasks (Step 1)."""
+    from app.clients import airflow as af
+    return af.get_dag_topology()
+
+
+@app.post("/admin/airflow-trigger")
+async def post_airflow_trigger(conf: dict | None = None) -> dict:
+    """Trigger northwind_llm_enrichment from a new source batch (Step 2)."""
+    from app.clients import airflow as af
+    body = conf or {}
+    # Accept both {"conf": {...}} (matches Airflow REST shape) and
+    # raw conf payloads for convenience.
+    run_conf = body.get("conf", body)
+    return af.trigger_dag_run(run_conf)
+
+
+@app.get("/admin/airflow-dag-runs")
+async def get_airflow_dag_runs(limit: int = 5) -> dict:
+    """Recent DAG runs with state transitions (Step 3)."""
+    from app.clients import airflow as af
+    return {"dag_id": "northwind_llm_enrichment",
+            "limit": limit,
+            "dag_runs": af.list_dag_runs(limit=limit)}
+
+
+@app.get("/admin/airflow-task-log")
+async def get_airflow_task_log(dag_run_id: str, task_id: str) -> dict:
+    """Task log fields: batch_id, request_id, validation_result, output_row_id (Step 4)."""
+    from app.clients import airflow as af
+    return {"dag_run_id": dag_run_id, "task_id": task_id,
+            **af.get_task_log(dag_run_id, task_id)}
+
+
+@app.get("/admin/airflow-branch-decision")
+async def get_airflow_branch_decision(dag_run_id: str) -> dict:
+    """Dynamic branch decision: taken vs. skipped downstream (Step 6)."""
+    from app.clients import airflow as af
+    return {"dag_run_id": dag_run_id, **af.get_branch_decision(dag_run_id)}
+
+
+@app.get("/admin/disposition-summary")
+async def get_disposition_summary(limit: int = 5) -> dict:
+    """Disposition counts + recent reasons — best-practice callout (Step 5)."""
+    from app.clients import airflow as af
+    summary = af.get_disposition_summary(limit=limit)
+    # Augment with the DuckDB row counts so the on-screen view ties
+    # the disposition log back to the real warehouse tables.
+    try:
+        summary["duckdb_trusted_rows"] = duckdb_client.get_table_count(
+            "trusted", "feedback_enriched")
+        summary["duckdb_quarantine_rows"] = duckdb_client.get_table_count(
+            "quarantine", "llm_outputs")
+    except Exception:
+        summary["duckdb_trusted_rows"] = None
+        summary["duckdb_quarantine_rows"] = None
+    return summary
+
+
 @app.get("/admin/metrics")
 async def get_metrics() -> dict:
     from app.db import postgres

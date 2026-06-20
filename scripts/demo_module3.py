@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+"""Automated Module 3 demo runner.
+
+Walks the same 6 steps as module3/README.md in order, piping each curl
+response through scripts/fmt.py with the right --type, --title, and --why
+so the on-screen output matches the README. Used to double-check the
+demo end-to-end before recording.
+"""
+from __future__ import annotations
+
 import json
 import subprocess
 import sys
@@ -7,94 +16,111 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 API_URL = "http://localhost:8000"
+FMT = str(REPO_ROOT / "scripts" / "fmt.py")
+PAYLOAD = REPO_ROOT / "data" / "payloads" / "airflow_trigger.json"
 
 
-def run_curl(endpoint: str, payload: str | None = None, method: str = "GET") -> dict:
-    cmd = ["curl", "-sf"]
-    if method == "POST":
-        cmd.extend(["-X", "POST"])
-        if payload:
-            if payload.startswith("{") or payload.startswith("["):
-                cmd.extend(["-H", "Content-Type: application/json", "-d", payload])
-            else:
-                cmd.extend(["-H", "Content-Type: application/json", "-d", f"@{payload}"])
-    cmd.append(f"{API_URL}{endpoint}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"Error calling {endpoint}: {result.stderr}", file=sys.stderr)
-        return {}
-    return json.loads(result.stdout) if result.stdout else {}
-
-
-def fmt(data: dict | list, fmt_type: str) -> None:
-    subprocess.run(
-        [sys.executable, str(REPO_ROOT / "scripts" / "fmt.py"), "--type", fmt_type],
-        input=json.dumps(data),
-        text=True,
+def http_get(path: str) -> dict | list:
+    out = subprocess.run(
+        ["curl", "-sf", f"{API_URL}{path}"], capture_output=True, text=True
     )
+    if out.returncode != 0:
+        print(f"GET {path} failed: {out.stderr}", file=sys.stderr)
+        sys.exit(1)
+    return json.loads(out.stdout) if out.stdout else {}
 
 
-def main():
-    print("Module 3 Demo: Triggering and monitoring an Airflow enrichment pipeline\n")
+def http_post(path: str, payload_file: Path) -> dict:
+    out = subprocess.run(
+        [
+            "curl", "-sf", "-X", "POST",
+            "-H", "Content-Type: application/json",
+            "-d", f"@{payload_file}",
+            f"{API_URL}{path}",
+        ],
+        capture_output=True, text=True,
+    )
+    if out.returncode != 0:
+        print(f"POST {path} failed: {out.stderr}", file=sys.stderr)
+        sys.exit(1)
+    return json.loads(out.stdout) if out.stdout else {}
 
-    health = run_curl("/health")
-    if not health:
-        print("Server not running. Start with: module3/scripts/demo_up.sh")
+
+def show(data, fmt_type: str, title: str, why: str) -> None:
+    subprocess.run(
+        [sys.executable, FMT, "--type", fmt_type, "--title", title, "--why", why],
+        input=json.dumps(data), text=True,
+    )
+    print()
+
+
+def main() -> None:
+    print("Module 3 demo: Triggering and monitoring an Airflow enrichment pipeline\n")
+
+    health = http_get("/health")
+    if not health or health.get("status") != "healthy":
+        print("Server not healthy. Start with: ./scripts/module3-demo-reset.sh")
         sys.exit(1)
     print("[ok] Server healthy\n")
 
-    run_curl("/admin/reset-metrics", method="POST")
-    run_curl("/admin/seed-knowledge-base", method="POST")
-
-    # Step 1
-    print("=" * 60)
-    print("Step 1: Trigger Airflow DAG")
-    print("=" * 60)
-    trigger_payload = json.dumps({
-        "batch_id": "BATCH-20240318-001",
-        "source": "data/payloads/batch_feedback.json",
-    })
-    result = run_curl("/pipeline/trigger", payload=trigger_payload, method="POST")
-    fmt(result, "raw")
-    print()
+    # Step 1 — DAG topology
+    dag = http_get("/admin/airflow-dag")
+    show(
+        dag, "airflow-dag",
+        "northwind_llm_enrichment DAG topology",
+        "Three static transform tasks plus one dynamic branch task",
+    )
     time.sleep(1)
 
-    # Step 2
-    print("=" * 60)
-    print("Step 2: Pipeline run results")
-    print("=" * 60)
-    runs = run_curl("/pipeline/runs")
-    fmt(runs, "raw")
-    print()
+    # Step 2 — Trigger
+    trigger = http_post("/admin/airflow-trigger", PAYLOAD)
+    show(
+        trigger, "airflow-trigger",
+        "Trigger northwind_llm_enrichment for BATCH-2024-001",
+        "Returns dag_run_id and the initial queued state",
+    )
     time.sleep(1)
 
-    # Step 3
-    print("=" * 60)
-    print("Step 3: Batch enrichment details")
-    print("=" * 60)
-    batch = run_curl("/pipeline/run/BATCH-20240318-001")
-    fmt(batch, "batch")
-    print()
+    # Step 3 — State transitions
+    runs = http_get("/admin/airflow-dag-runs?limit=3")
+    show(
+        runs, "airflow-dag-runs",
+        "DAG run state transitions (last 3 runs)",
+        "queued (gray) → running (blue) → success (lime); failed shows pink",
+    )
     time.sleep(1)
 
-    # Step 4
-    print("=" * 60)
-    print("Step 4: DuckDB trusted output and quarantine")
-    print("=" * 60)
-    if subprocess.run(["which", "duckdb"], capture_output=True).returncode == 0:
-        db_path = str(REPO_ROOT / "data" / "northwind.duckdb")
-        print("Trusted table:")
-        subprocess.run(["duckdb", db_path,
-            "SELECT request_id, category, confidence, validation_status "
-            "FROM trusted.feedback_enriched ORDER BY enriched_at DESC LIMIT 5"])
-        print("\nQuarantine table:")
-        subprocess.run(["duckdb", db_path,
-            "SELECT request_id, validation_errors "
-            "FROM quarantine.llm_outputs ORDER BY quarantined_at DESC LIMIT 5"])
-    else:
-        print("duckdb CLI not available")
-    print()
-    print("Demo complete.")
+    # Step 4 — Task log fields — pull the most recent run id
+    dag_runs = runs.get("dag_runs", []) if isinstance(runs, dict) else []
+    run_id = dag_runs[0].get("dag_run_id", "") if dag_runs else ""
+    task_log = http_get(
+        f"/admin/airflow-task-log?dag_run_id={run_id}&task_id=enrich_via_fastapi"
+    )
+    show(
+        task_log, "airflow-task-log",
+        "Task log fields — enrich_via_fastapi",
+        "All four outline-named fields, lifted from the live task log",
+    )
+    time.sleep(1)
+
+    # Step 5 — Dispositions
+    disp = http_get("/admin/disposition-summary?limit=5")
+    show(
+        disp, "dispositions",
+        "Disposition summary (accepted vs quarantined)",
+        "A task that succeeds can still produce quarantined records — count both",
+    )
+    time.sleep(1)
+
+    # Step 6 — Branch decision
+    branch = http_get(f"/admin/airflow-branch-decision?dag_run_id={run_id}")
+    show(
+        branch, "airflow-branch",
+        "validation_branch decision for this run",
+        "Dynamic branch chose downstream_taken; downstream_skipped did not run",
+    )
+
+    print("Demo complete. See module3/preflight_log.txt for the captured log.")
 
 
 if __name__ == "__main__":
