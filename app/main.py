@@ -257,6 +257,20 @@ async def get_airflow_dag() -> dict:
     return af.get_dag_topology()
 
 
+def _fix_dag_run_id(s: str) -> str:
+    """Reverse the URL form-encoding mishap that turns '+' into ' '.
+
+    Airflow dag_run_ids look like 'manual__2024-...+00:00'. Curl users
+    typically don't URL-encode the '+', so the FastAPI query parser
+    decodes it as a space. Convert any ' 00:00' suffix back so the
+    Airflow REST API receives the real id.
+    """
+    if not s:
+        return s
+    import re as _re
+    return _re.sub(r" (\d{2}:\d{2})$", r"+\1", s)
+
+
 @app.get("/admin/airflow-wait-for-run")
 async def get_airflow_wait_for_run(
     dag_run_id: str,
@@ -269,7 +283,8 @@ async def get_airflow_wait_for_run(
     output) and Steps 3/4/6 still see a finished run.
     """
     from app.clients import airflow as af
-    return af.wait_for_run(dag_run_id=dag_run_id, max_wait=max_wait)
+    return af.wait_for_run(dag_run_id=_fix_dag_run_id(dag_run_id),
+                           max_wait=max_wait)
 
 
 @app.post("/admin/airflow-trigger")
@@ -304,7 +319,8 @@ async def get_airflow_dag_runs(
     from app.clients import airflow as af
     rows = af.list_dag_runs(limit=max(limit, 20) if dag_run_id else limit)
     if dag_run_id:
-        rows = [r for r in rows if r.get("dag_run_id") == dag_run_id][:limit]
+        target = _fix_dag_run_id(dag_run_id)
+        rows = [r for r in rows if r.get("dag_run_id") == target][:limit]
     return {"dag_id": "northwind_llm_enrichment",
             "limit": limit,
             "dag_runs": rows}
@@ -314,15 +330,17 @@ async def get_airflow_dag_runs(
 async def get_airflow_task_log(dag_run_id: str, task_id: str) -> dict:
     """Task log fields: batch_id, request_id, validation_result, output_row_id (Step 4)."""
     from app.clients import airflow as af
-    return {"dag_run_id": dag_run_id, "task_id": task_id,
-            **af.get_task_log(dag_run_id, task_id)}
+    fixed = _fix_dag_run_id(dag_run_id)
+    return {"dag_run_id": fixed, "task_id": task_id,
+            **af.get_task_log(fixed, task_id)}
 
 
 @app.get("/admin/airflow-branch-decision")
 async def get_airflow_branch_decision(dag_run_id: str) -> dict:
     """Dynamic branch decision: taken vs. skipped downstream (Step 6)."""
     from app.clients import airflow as af
-    return {"dag_run_id": dag_run_id, **af.get_branch_decision(dag_run_id)}
+    fixed = _fix_dag_run_id(dag_run_id)
+    return {"dag_run_id": fixed, **af.get_branch_decision(fixed)}
 
 
 @app.get("/admin/disposition-summary")
