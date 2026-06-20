@@ -72,7 +72,8 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/plugins:/opt/airflow/plugins
       - ./logs:/opt/airflow/logs
-    command: airflow scheduler
+    command: >
+      bash -c "airflow db migrate && airflow scheduler"
     depends_on:
       postgres:
         condition: service_healthy

@@ -108,6 +108,35 @@ info "Seeding knowledge base..."
 curl -sf -X POST http://localhost:8000/admin/seed-knowledge-base >/dev/null || true
 ok "Knowledge base seeded"
 
+# Wait for the scheduler to actually parse the DAG and unpause it.
+# Without this, triggered runs sit in 'queued' until the scheduler
+# notices them — often 60+ seconds on first boot.
+if [[ $AIRFLOW_LIVE -eq 1 ]]; then
+  info "Waiting up to 60s for the scheduler to parse northwind_llm_enrichment..."
+  DAG_PARSED=0
+  for _ in $(seq 1 20); do
+    DAG_META=$(curl -sf -u admin:admin "http://localhost:8080/api/v1/dags/northwind_llm_enrichment" 2>/dev/null)
+    if [[ -n "$DAG_META" ]] && echo "$DAG_META" | grep -q '"dag_id"'; then
+      DAG_PARSED=1
+      break
+    fi
+    sleep 3
+  done
+  if [[ $DAG_PARSED -eq 1 ]]; then
+    ok "Scheduler has parsed the DAG"
+    info "Unpausing northwind_llm_enrichment so triggered runs actually execute..."
+    curl -sf -u admin:admin -X PATCH \
+      -H "Content-Type: application/json" \
+      -d '{"is_paused": false}' \
+      "http://localhost:8080/api/v1/dags/northwind_llm_enrichment" >/dev/null \
+      && ok "DAG unpaused" \
+      || printf "  ${YELLOW}[WARN]${NC} Could not unpause DAG — triggered runs may stay queued.\n"
+  else
+    printf "  ${YELLOW}[WARN]${NC} Scheduler did not parse DAG in 60s.\n"
+    printf "  ${YELLOW}[WARN]${NC} Diagnose: docker compose logs airflow-scheduler | tail -50\n"
+  fi
+fi
+
 info "Triggering 3 initial batch runs so Step 3 has 3 rows of history..."
 LAST_RID=""
 RUN_IDS=()
