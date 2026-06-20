@@ -122,8 +122,8 @@ log ""
 
 DAG_ID=$(echo "$DAG_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('dag_id',''))")
 TASK_COUNT=$(echo "$DAG_JSON" | python3 -c "import json,sys;print(len(json.load(sys.stdin).get('tasks',[])))")
-STATIC=$(echo "$DAG_JSON" | python3 -c "import json,sys;print(','.join(json.load(sys.stdin).get('static_tasks',[])))")
-BRANCHES=$(echo "$DAG_JSON" | python3 -c "import json,sys;print(','.join(json.load(sys.stdin).get('dynamic_branches',[])))")
+STATIC=$(echo "$DAG_JSON" | python3 -c "import json,sys;print(', '.join(json.load(sys.stdin).get('static_tasks',[])))")
+BRANCHES=$(echo "$DAG_JSON" | python3 -c "import json,sys;print(', '.join(json.load(sys.stdin).get('dynamic_branches',[])))")
 
 highlight "dag_id:"             "$DAG_ID"
 highlight "task count:"         "$TASK_COUNT"
@@ -265,7 +265,7 @@ fi
 OBSERVED_STATES=$(echo "$RUNS_JSON" | python3 -c "
 import json,sys
 d=json.load(sys.stdin).get('dag_runs',[])
-print(','.join(d[0].get('observed_states', []) if d else []))")
+print(', '.join(d[0].get('observed_states', []) if d else []))")
 highlight "observed states:" "$OBSERVED_STATES"
 log "  observed states: $OBSERVED_STATES"
 
@@ -280,7 +280,7 @@ d=json.load(sys.stdin).get('dag_runs',[])
 any_s = any('success' in (r.get('observed_states') or []) or r.get('state') == 'success' for r in d)
 print('yes' if any_s else 'no')")
 if [[ "$ANY_SUCCESS" == "yes" ]]; then
-  pass "at least one run reached state=success (queued -> running -> success proven)"
+  pass "this DAG run reached state=success (queued -> running -> success proven)"
 else
   fail_check "no run in the last $RUN_COUNT runs reached success — Step 3's transition proof is incomplete"
   fix "Wait ~15 seconds after Step 2's trigger for the DAG to finish, then rerun. If Airflow is unreachable, ./scripts/module3-demo-reset.sh will reseed three stub runs that already include success."
@@ -466,7 +466,7 @@ else
   fix "Verify the @task.branch decorator stays on validation_branch in the DAG"
 fi
 if [[ -n "$TAKEN" && -n "$SKIPPED" && "$TAKEN" != "$SKIPPED" ]]; then
-  pass "downstream_taken ($TAKEN) is distinct from downstream_skipped ($SKIPPED)"
+  pass "$TAKEN ran successfully and $SKIPPED was skipped"
 else
   fail_check "downstream_taken/skipped are missing or identical"
   fix "Verify app/clients/airflow.py get_branch_decision() returns both fields"
