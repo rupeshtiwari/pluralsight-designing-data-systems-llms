@@ -41,13 +41,40 @@ rm -f data/northwind.duckdb data/northwind.duckdb.wal
 ok "DuckDB cleared"
 
 # ── Reset Airflow containers when Docker is available ───────────────────────
+AIRFLOW_LIVE=0
 if command -v docker >/dev/null 2>&1; then
   info "Stopping Airflow containers (if running)..."
-  docker compose stop airflow-webserver airflow-scheduler >/dev/null 2>&1 || true
+  docker compose stop airflow-webserver airflow-scheduler 2>/dev/null || true
   ok "Airflow containers stopped"
+
   info "Starting Airflow + Postgres containers..."
-  docker compose up -d postgres airflow-webserver airflow-scheduler >/dev/null 2>&1 \
-    || ok "(docker compose not started — continuing with memory stub)"
+  # Show docker output instead of swallowing it — silent failures here
+  # were the root cause of Step 1 showing 'backend: memory' on a Mac
+  # where Airflow looked healthy but was never actually reachable.
+  if docker compose up -d postgres airflow-webserver airflow-scheduler; then
+    info "Waiting up to 90s for Airflow webserver to answer http://localhost:8080..."
+    WAITED=0
+    while [[ $WAITED -lt 90 ]]; do
+      if curl -sf -m 2 http://localhost:8080/api/v1/health >/dev/null 2>&1; then
+        AIRFLOW_LIVE=1
+        ok "Airflow webserver is responding (after ${WAITED}s)"
+        break
+      fi
+      sleep 3
+      WAITED=$((WAITED + 3))
+    done
+    if [[ $AIRFLOW_LIVE -eq 0 ]]; then
+      printf "  ${YELLOW}[WARN]${NC} Airflow webserver did not respond in 90s.\n"
+      printf "  ${YELLOW}[WARN]${NC} Demo will run with backend=memory. Diagnose with:\n"
+      printf "  ${YELLOW}[WARN]${NC}   docker compose ps | grep airflow\n"
+      printf "  ${YELLOW}[WARN]${NC}   docker compose logs airflow-webserver | tail -50\n"
+    fi
+  else
+    printf "  ${RED}[FAIL]${NC} docker compose up did not start Airflow.\n"
+    printf "  ${RED}[FAIL]${NC} Demo will run with backend=memory. Fix Docker first:\n"
+    printf "  ${RED}[FAIL]${NC}   docker compose ps\n"
+    printf "  ${RED}[FAIL]${NC}   docker compose logs airflow-webserver airflow-scheduler\n"
+  fi
 else
   ok "Docker not installed — Airflow client will use the memory stub"
 fi
