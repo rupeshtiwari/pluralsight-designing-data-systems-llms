@@ -296,7 +296,7 @@ fi
 # STEP 4 (LO 3b) — Task log fields
 # ═════════════════════════════════════════════════════════════════════════════
 step_header "4/6" "Inspect task log for batch_id, request_id, validation_result, output_row_id" "3b — Integrate LLM logic into orchestration"
-show_command "curl -s \"$API/admin/airflow-task-log?dag_run_id=\$RUN_ID&task_id=enrich_via_fastapi\" | python3 scripts/fmt.py --type airflow-task-log"
+show_command "curl -s \"\$API/admin/airflow-task-log?dag_run_id=\$DAG_RUN_ID&task_id=enrich_via_fastapi\" | python3 scripts/fmt.py --type airflow-task-log"
 
 log_divider "STEP 4: Task log fields (LO 3b)"
 LOG_JSON=$(curl -sf "$API/admin/airflow-task-log?dag_run_id=${DAG_RUN_ID}&task_id=enrich_via_fastapi")
@@ -419,7 +419,7 @@ fi
 # STEP 6 (LO 3a, 3d) — Branch decision
 # ═════════════════════════════════════════════════════════════════════════════
 step_header "6/6" "Show the dynamic branch decision" "3a, 3d — Dynamic orchestration + guardrail"
-show_command "curl -s \"$API/admin/airflow-branch-decision?dag_run_id=\$RUN_ID\" | python3 scripts/fmt.py --type airflow-branch"
+show_command "curl -s \"\$API/admin/airflow-branch-decision?dag_run_id=\$DAG_RUN_ID\" | python3 scripts/fmt.py --type airflow-branch"
 
 log_divider "STEP 6: Branch decision (LO 3a, 3d)"
 BR_JSON=$(curl -sf "$API/admin/airflow-branch-decision?dag_run_id=${DAG_RUN_ID}")
