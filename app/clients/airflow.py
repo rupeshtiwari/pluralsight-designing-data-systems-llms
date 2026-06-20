@@ -286,12 +286,25 @@ def get_dag_topology() -> dict[str, Any]:
                     ttype = "static"
                 tasks.append({"task_id": tid, "type": ttype,
                               "downstream": downstream})
+            # Canonical pipeline order so the on-screen view reads as
+            # extract → transform → enrich, then branch → write_trusted →
+            # write_quarantine. Airflow's REST API returns tasks in
+            # alphabetical order; we sort by this order so Step 1's
+            # learner story matches the actual data flow.
+            STATIC_ORDER = ["extract_batch", "transform", "enrich_via_fastapi"]
+            DYNAMIC_ORDER = ["validation_branch", "write_trusted", "write_quarantine"]
+            def _ordered(names: list[str], canonical: list[str]) -> list[str]:
+                in_canonical = [n for n in canonical if n in names]
+                extras = [n for n in names if n not in canonical]
+                return in_canonical + extras
+            static_names = [t["task_id"] for t in tasks if t["type"] == "static"]
+            dynamic_names = [t["task_id"] for t in tasks
+                             if t["type"] in ("branch", "dynamic")]
             return {
                 "dag_id": DAG_ID,
                 "tasks": tasks,
-                "static_tasks": [t["task_id"] for t in tasks if t["type"] == "static"],
-                "dynamic_branches": [t["task_id"] for t in tasks
-                                     if t["type"] in ("branch", "dynamic")],
+                "static_tasks": _ordered(static_names, STATIC_ORDER),
+                "dynamic_branches": _ordered(dynamic_names, DYNAMIC_ORDER),
                 "backend": "airflow",
             }
     return {**_DAG_TOPOLOGY, "backend": "memory"}
