@@ -76,19 +76,22 @@ info "Seeding knowledge base..."
 curl -sf -X POST http://localhost:8000/admin/seed-knowledge-base >/dev/null || true
 ok "Knowledge base seeded"
 
-info "Triggering one initial batch run for the demo to display..."
-TRIGGER=$(curl -sf -X POST http://localhost:8000/admin/airflow-trigger \
-  -H "Content-Type: application/json" \
-  -d @data/payloads/airflow_trigger.json || true)
-if [[ -n "$TRIGGER" ]]; then
-  RID=$(echo "$TRIGGER" | python3 -c "import json,sys;print(json.load(sys.stdin).get('dag_run_id',''))" 2>/dev/null || echo "")
-  if [[ -n "$RID" ]]; then
-    ok "Initial DAG run triggered: $RID"
-  else
-    ok "Trigger call returned but no dag_run_id parsed"
+info "Triggering 3 initial batch runs so Step 3 has 3 rows of history..."
+LAST_RID=""
+for i in 1 2 3; do
+  TRIGGER=$(curl -sf -X POST http://localhost:8000/admin/airflow-trigger \
+    -H "Content-Type: application/json" \
+    -d @data/payloads/airflow_trigger.json || true)
+  if [[ -n "$TRIGGER" ]]; then
+    LAST_RID=$(echo "$TRIGGER" | python3 -c "import json,sys;print(json.load(sys.stdin).get('dag_run_id',''))" 2>/dev/null || echo "")
   fi
+  # Tiny sleep so the dag_run_id timestamps are distinguishable
+  sleep 1
+done
+if [[ -n "$LAST_RID" ]]; then
+  ok "3 DAG runs triggered (latest: $LAST_RID)"
 else
-  ok "Trigger call skipped (Airflow not reachable, memory stub will seed itself)"
+  ok "Trigger calls skipped (Airflow not reachable, memory stub will seed itself)"
 fi
 
 echo ""
