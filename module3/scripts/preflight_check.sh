@@ -430,20 +430,32 @@ log ""
 
 BR_TASK=$(echo "$BR_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('branch_task_id',''))")
 DECISION=$(echo "$BR_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('decision',''))")
+UPSTREAM=$(echo "$BR_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('upstream_task_state',''))")
 TAKEN=$(echo "$BR_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('downstream_taken',''))")
 SKIPPED=$(echo "$BR_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin).get('downstream_skipped',''))")
+TAKEN_STATE=$(echo "$BR_JSON" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+print((d.get('downstream_states') or {}).get(d.get('downstream_taken',''), ''))")
+SKIPPED_STATE=$(echo "$BR_JSON" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+print((d.get('downstream_states') or {}).get(d.get('downstream_skipped',''), ''))")
 
 highlight "branch_task:"        "$BR_TASK"
 highlight "decision:"           "$DECISION"
+highlight "upstream_task_state:" "$UPSTREAM"
 highlight "downstream_taken:"   "$TAKEN"
-highlight "downstream_skipped:" "$SKIPPED"
+highlight "${TAKEN} state:"      "${TAKEN_STATE:-unknown}"
+highlight "${SKIPPED} state:"    "${SKIPPED_STATE:-skipped}"
 echo ""
 
 log "EXTRACTED VALUES:"
-log "  branch_task: $BR_TASK"
-log "  decision:    $DECISION"
-log "  taken:       $TAKEN"
-log "  skipped:     $SKIPPED"
+log "  branch_task:         $BR_TASK"
+log "  decision:            $DECISION"
+log "  upstream_task_state: $UPSTREAM"
+log "  taken:               $TAKEN ($TAKEN_STATE)"
+log "  skipped:             $SKIPPED ($SKIPPED_STATE)"
 log ""
 log "LO COVERAGE: 3a — Dynamic branch chose a downstream task; 3d — quarantine branch is wired in"
 
