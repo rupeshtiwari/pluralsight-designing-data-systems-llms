@@ -84,17 +84,17 @@ curl -s http://localhost:8000/admin/airflow-dag | python3 scripts/fmt.py --type 
 
 ### Step 2: Trigger the DAG and capture the run id (LO 3c)
 
-**Goal**: Start a fresh DAG run from a payload that names the batch and the feedback records to enrich, wait for it to finish, and capture the `dag_run_id` so Steps 3, 4, and 6 can all pin to this exact run.
+**Goal**: Start a fresh DAG run from a payload that names the batch and the feedback records to enrich. The trigger response shows the scheduler accepted the run as `queued` — Step 3 will prove the transition to `success`.
 
 ```bash
-TRIGGER=$(curl -s -X POST "http://localhost:8000/admin/airflow-trigger?wait=true&max_wait=90" \
+TRIGGER=$(curl -s -X POST http://localhost:8000/admin/airflow-trigger \
   -H "Content-Type: application/json" \
   -d @data/payloads/airflow_trigger.json)
 echo "$TRIGGER" | python3 scripts/fmt.py --type airflow-trigger \
   --title "Trigger northwind_llm_enrichment for BATCH-2024-001" \
-  --why "wait=true blocks until the run reaches success/failed; returns final state"
+  --why "Scheduler accepted the run — initial state is queued"
 
-# Capture the run id for the rest of the demo
+# Capture the run id so Steps 3, 4, and 6 all pin to this exact run
 RUN_ID=$(echo "$TRIGGER" | python3 -c "import json,sys;print(json.load(sys.stdin)['dag_run_id'])")
 echo "RUN_ID=$RUN_ID"
 ```
@@ -102,11 +102,20 @@ echo "RUN_ID=$RUN_ID"
 **Expected output**:
 
 - ★ dag_run_id: `manual__2024-...` (the id Steps 3/4/6 will use)
-- ★ state: `success` (because `wait=true` blocks until the run finishes)
+- ★ state: `queued` (the scheduler accepted it; execution starts next)
 - ★ logical_date: ISO-8601 timestamp the scheduler assigned
 - backend: `airflow`
 
-**What the learner should notice**: A trigger is a single POST. The `conf` block in the payload carries the batch metadata — `batch_id`, `source`, `feedback_ids` — so the DAG knows which records to pull. The `wait=true` query parameter is the operational glue every runbook needs: without it the response returns immediately with `state=queued` and downstream steps may query an in-flight run that has no task log or branch decision yet. With it, the endpoint polls the same `dag_run_id` until it reaches a terminal state, returning the final result the demo will inspect. The `dag_run_id` you just captured is the handle Steps 3, 4, and 6 all use — one stable identifier follows a batch end-to-end.
+**What the learner should notice**: A trigger is a single POST that returns immediately. The `conf` block in the payload carries the batch metadata — `batch_id`, `source`, `feedback_ids` — so the DAG knows which records to pull. The response is intentionally small: a `dag_run_id` and `state=queued`. The DAG has not run yet; the scheduler has only accepted it. That separation matters — the trigger endpoint never blocks on LLM execution, it hands the work off to Airflow and returns control. The `dag_run_id` is the handle Steps 3, 4, and 6 all key off — one stable identifier follows the batch end-to-end.
+
+### Step 2b: Wait for this run to finish before inspecting it (off-camera helper)
+
+So Steps 3/4/6 query a run that has already reached its terminal state, run this one-liner between Step 2 and Step 3. It blocks until `RUN_ID` reports `success` (or 90 seconds elapse). It produces no on-camera output — it just ensures the next three steps see a finished run instead of an in-flight one.
+
+```bash
+curl -s "http://localhost:8000/admin/airflow-wait-for-run?dag_run_id=${RUN_ID}&max_wait=90" >/dev/null \
+  && echo "RUN_ID ${RUN_ID} reached a terminal state"
+```
 
 ### Step 3: Watch state transitions (queued → running → success) (LO 3c)
 

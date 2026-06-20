@@ -175,7 +175,7 @@ log "INPUT PAYLOAD (data/payloads/airflow_trigger.json):"
 cat "$PROJECT_ROOT/data/payloads/airflow_trigger.json" >> "$LOG"
 log ""
 
-TRIG=$(curl -sf -X POST "$API/admin/airflow-trigger?wait=true&max_wait=90" \
+TRIG=$(curl -sf -X POST "$API/admin/airflow-trigger" \
   -H "Content-Type: application/json" \
   -d @"$PROJECT_ROOT/data/payloads/airflow_trigger.json")
 echo "$TRIG" | python3 -m json.tool > "$TMPD/step2.json" 2>&1
@@ -186,6 +186,14 @@ log ""
 DAG_RUN_ID=$(echo "$TRIG" | python3 -c "import json,sys;print(json.load(sys.stdin).get('dag_run_id',''))")
 TRIG_STATE=$(echo "$TRIG" | python3 -c "import json,sys;print(json.load(sys.stdin).get('state',''))")
 LOGICAL=$(echo "$TRIG" | python3 -c "import json,sys;print(json.load(sys.stdin).get('logical_date',''))")
+
+# Step 2b: wait for the captured run to reach terminal state before
+# Step 3/4/6 query it. Off-camera helper; output goes to log only.
+if [[ -n "$DAG_RUN_ID" ]]; then
+  log "STEP 2b: wait for $DAG_RUN_ID to reach success (max_wait=90)"
+  WAIT_RESULT=$(curl -sf "$API/admin/airflow-wait-for-run?dag_run_id=${DAG_RUN_ID}&max_wait=90")
+  log "  wait result: $WAIT_RESULT"
+fi
 
 highlight "dag_run_id:"     "$DAG_RUN_ID"
 highlight "state:"          "$TRIG_STATE"

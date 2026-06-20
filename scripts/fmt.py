@@ -1544,15 +1544,21 @@ def fmt_airflow_branch(data: dict) -> str:
         f"  {PINK}★{RESET} {BLUE}downstream_taken:{RESET} {LIME}{taken}{RESET}"
     )
     lines.append("")
-    if taken_state:
-        ts_color = _state_color(taken_state)
-        lines.append(
-            f"  {PINK}★{RESET} {BLUE}{taken} state:{RESET} {ts_color}{taken_state}{RESET}"
-        )
-        lines.append("")
+    # Always print the taken branch's actual state line, even if the
+    # state is empty/None — the README's expected output requires this
+    # row to always appear so 'state' is unambiguously paired with
+    # 'downstream_taken'.
+    taken_state_display = taken_state or "unknown"
+    ts_color = _state_color(taken_state_display)
+    lines.append(
+        f"  {PINK}★{RESET} {BLUE}{taken} state:{RESET} {ts_color}{taken_state_display}{RESET}"
+    )
+    lines.append("")
     if skipped and skipped != taken:
+        sk_display = skipped_state or "skipped"
+        sk_color = _state_color(sk_display)
         lines.append(
-            f"  {PINK}★{RESET} {BLUE}{skipped} state:{RESET} {GRAY}{skipped_state or 'skipped'}{RESET}"
+            f"  {PINK}★{RESET} {BLUE}{skipped} state:{RESET} {sk_color}{sk_display}{RESET}"
         )
         lines.append("")
     # Trailing pad

@@ -354,6 +354,31 @@ def trigger_dag_run(conf: dict[str, Any], wait: bool = False,
     }
 
 
+def wait_for_run(dag_run_id: str, max_wait: int = 90) -> dict[str, Any]:
+    """Block until the given dag_run reaches success/failed (or timeout).
+
+    Used by /admin/airflow-wait-for-run between demo Step 2 (trigger
+    returns queued) and Step 3 (state-transition view of the same run).
+    """
+    import time as _t
+    deadline = _t.time() + max_wait
+    last_state = "unknown"
+    if _airflow_reachable():
+        while _t.time() < deadline:
+            r = _real_get(f"/api/v1/dags/{DAG_ID}/dagRuns/{dag_run_id}")
+            if r:
+                last_state = r.get("state") or last_state
+                if last_state in ("success", "failed"):
+                    return {"dag_run_id": dag_run_id, "state": last_state,
+                            "backend": "airflow", "timed_out": False}
+            _t.sleep(3)
+        return {"dag_run_id": dag_run_id, "state": last_state,
+                "backend": "airflow", "timed_out": True}
+    # Stub mode: the run is already success the moment it was triggered
+    return {"dag_run_id": dag_run_id, "state": "success",
+            "backend": "memory", "timed_out": False}
+
+
 def list_dag_runs(limit: int = 5) -> list[dict[str, Any]]:
     """Recent DAG runs, newest first; each row has state transition data."""
     if _airflow_reachable():

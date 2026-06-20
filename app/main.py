@@ -257,6 +257,21 @@ async def get_airflow_dag() -> dict:
     return af.get_dag_topology()
 
 
+@app.get("/admin/airflow-wait-for-run")
+async def get_airflow_wait_for_run(
+    dag_run_id: str,
+    max_wait: int = 90,
+) -> dict:
+    """Block until a specific dag_run reaches a terminal state.
+
+    Off-camera helper for Module 3 Step 2b — so Step 2 can return
+    immediately with state=queued (matching the README's expected
+    output) and Steps 3/4/6 still see a finished run.
+    """
+    from app.clients import airflow as af
+    return af.wait_for_run(dag_run_id=dag_run_id, max_wait=max_wait)
+
+
 @app.post("/admin/airflow-trigger")
 async def post_airflow_trigger(
     conf: dict | None = None,
