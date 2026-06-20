@@ -368,6 +368,45 @@ else
   fix "Verify data/payloads/airflow_trigger.json includes feedback_id 99 (ambiguous record)"
 fi
 
+# Outline literal: 'Verify accepted records in trusted output and failed
+# records in quarantine with reasons'. Surface the first quarantined
+# row's full record so the preflight log proves the reason field is
+# populated end-to-end.
+QUAR_RECORD=$(echo "$DISP_JSON" | python3 -c "
+import json,sys
+d = json.load(sys.stdin).get('recent_dispositions', [])
+q = next((r for r in d if r.get('disposition') == 'quarantined'), None)
+if q:
+    print(q.get('request_id',''))
+    print(q.get('disposition',''))
+    print(q.get('reason',''))
+    print(q.get('batch_id',''))
+" 2>/dev/null)
+QUAR_REQ_ID=$(echo "$QUAR_RECORD" | sed -n '1p')
+QUAR_DISP=$(echo "$QUAR_RECORD" | sed -n '2p')
+QUAR_REASON=$(echo "$QUAR_RECORD" | sed -n '3p')
+QUAR_BATCH=$(echo "$QUAR_RECORD" | sed -n '4p')
+
+echo ""
+printf "  ${BLUE}first quarantined record (proves LO 3d 'reasons' requirement):${NC}\n"
+highlight "request_id:" "${QUAR_REQ_ID:-(none)}"
+highlight "disposition:" "${QUAR_DISP:-(none)}"
+highlight "reason:"      "${QUAR_REASON:-(none)}"
+highlight "batch_id:"    "${QUAR_BATCH:-(none)}"
+
+log "FIRST QUARANTINED RECORD:"
+log "  request_id:  $QUAR_REQ_ID"
+log "  disposition: $QUAR_DISP"
+log "  reason:      $QUAR_REASON"
+log "  batch_id:    $QUAR_BATCH"
+
+if [[ -n "$QUAR_REASON" ]]; then
+  pass "first quarantined record carries a reason: $QUAR_REASON"
+else
+  fail_check "first quarantined record has no reason field — LO 3d 'records in quarantine with reasons' not proven"
+  fix "Check /admin/disposition-summary — every quarantined row must populate the 'reason' key (e.g. 'confidence below 0.75 threshold')"
+fi
+
 # ═════════════════════════════════════════════════════════════════════════════
 # STEP 6 (LO 3a, 3d) — Branch decision
 # ═════════════════════════════════════════════════════════════════════════════
