@@ -56,7 +56,12 @@ fi
 info "Starting FastAPI server..."
 mkdir -p logs
 source .venv/bin/activate 2>/dev/null || true
-uvicorn app.main:app --port 8000 > logs/server.log 2>&1 &
+# Pin Airflow URL + credentials inline so the FastAPI process always sees
+# them regardless of any stale shell env. Defaults match docker-compose.
+AIRFLOW_URL="${AIRFLOW_URL:-http://localhost:8080}" \
+AIRFLOW_USER="${AIRFLOW_USER:-admin}" \
+AIRFLOW_PASSWORD="${AIRFLOW_PASSWORD:-admin}" \
+  uvicorn app.main:app --port 8000 > logs/server.log 2>&1 &
 SERVER_PID=$!
 
 for _ in $(seq 1 30); do
