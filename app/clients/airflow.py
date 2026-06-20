@@ -185,6 +185,10 @@ def _seed_stub_run(batch_id: str = "BATCH-2024-001",
     # ambiguous (quarantine). validation_branch is documented as routing to
     # write_trusted as the primary success path, while the quarantine task
     # runs for the rejected subset.
+    # BranchPythonOperator picks exactly one downstream — the other is
+    # marked 'skipped' by the scheduler. Mirror that behavior in the stub
+    # so the on-screen view is self-consistent: downstream_taken state
+    # is the one we ran (success), downstream_skipped state is skipped.
     _STUB_BRANCH_DECISIONS[run_id] = {
         "branch_task_id": "validation_branch",
         "decision": "write_trusted",
@@ -193,7 +197,7 @@ def _seed_stub_run(batch_id: str = "BATCH-2024-001",
         "downstream_skipped": "write_quarantine",
         "downstream_states": {
             "write_trusted": "success",
-            "write_quarantine": "success",
+            "write_quarantine": "skipped",
         },
     }
 
