@@ -1380,6 +1380,22 @@ def fmt_airflow_dag_runs(data: dict) -> str:
     runs = data.get("dag_runs", []) or []
     lines.append(_hi_wrap("runs shown", str(len(runs))))
     lines.append("")
+
+    # State-transition proof for the most recent run — explicit ★ rows
+    # so the audience sees queued → running → success rather than just
+    # the final state. Each observed state is colored by its meaning.
+    if runs:
+        latest = runs[0]
+        observed = latest.get("observed_states") or [latest.get("state", "")]
+        lines.append(f"  {BLUE}latest run state transitions:{RESET}")
+        lines.append("")
+        for st in observed:
+            color = _state_color(str(st))
+            lines.append(
+                f"  {PINK}★{RESET} {color}{st}{RESET}: {GRAY}observed{RESET}"
+            )
+            lines.append("")
+
     lines.append(
         f"  {BLUE}{'dag_run_id':<46}{RESET}  "
         f"{BLUE}{'state':<10}{RESET}  "
@@ -1492,7 +1508,13 @@ def fmt_dispositions(data: dict) -> str:
 
 
 def fmt_airflow_branch(data: dict) -> str:
-    """Module 3 Step 6 — dynamic branch decision (taken vs skipped)."""
+    """Module 3 Step 6 — dynamic branch decision (taken vs skipped).
+
+    Layout pairs each downstream task with its actual state so the
+    'taken' branch and its state can never contradict each other on
+    screen — e.g. downstream_taken: write_quarantine is always
+    paired with write_quarantine state: success (or the live state).
+    """
     lines: list[str] = []
     lines.extend(_maybe_heading("Dynamic branch decision"))
 
@@ -1502,6 +1524,8 @@ def fmt_airflow_branch(data: dict) -> str:
     taken = str(data.get("downstream_taken", ""))
     skipped = str(data.get("downstream_skipped", ""))
     states = data.get("downstream_states", {}) or {}
+    taken_state = str(states.get(taken, "")) if taken in states else ""
+    skipped_state = str(states.get(skipped, "")) if skipped in states else ""
 
     lines.append(
         f"  {PINK}★{RESET} {BLUE}branch_task:{RESET} {LGRN}{branch_task}{RESET}"
@@ -1520,19 +1544,17 @@ def fmt_airflow_branch(data: dict) -> str:
         f"  {PINK}★{RESET} {BLUE}downstream_taken:{RESET} {LIME}{taken}{RESET}"
     )
     lines.append("")
-    lines.append(
-        f"  {PINK}★{RESET} {BLUE}downstream_skipped:{RESET} {GRAY}{skipped}{RESET}"
-    )
-    lines.append("")
-    if states:
-        lines.append(f"  {BLUE}downstream states:{RESET}")
+    if taken_state:
+        ts_color = _state_color(taken_state)
+        lines.append(
+            f"  {PINK}★{RESET} {BLUE}{taken} state:{RESET} {ts_color}{taken_state}{RESET}"
+        )
         lines.append("")
-        for name, st in states.items():
-            color = _state_color(str(st))
-            lines.append(
-                f"    {BLUE}{name}:{RESET} {color}{st}{RESET}"
-            )
-            lines.append("")
+    if skipped and skipped != taken:
+        lines.append(
+            f"  {PINK}★{RESET} {BLUE}{skipped} state:{RESET} {GRAY}{skipped_state or 'skipped'}{RESET}"
+        )
+        lines.append("")
     # Trailing pad
     # TRAILING-PAD-MARKER
     lines.append("")

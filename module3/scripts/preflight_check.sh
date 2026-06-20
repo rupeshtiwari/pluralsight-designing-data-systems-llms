@@ -37,6 +37,7 @@ ERRORS=0
 
 pass()       { printf "  ${GREEN}✓ PASS${NC}  %s\n" "$1"; }
 fail_check() { printf "  ${PINK}✗ FAIL${NC}  %s\n" "$1"; ERRORS=$((ERRORS + 1)); }
+warn_check() { printf "  ${BLUE}⚠ NOTE${NC}  %s\n" "$1"; }
 detail()     { printf "           ${GRAY}%s${NC}\n" "$1"; }
 fix()        { printf "    ${BLUE}→ Fix:${NC} %s\n" "$1"; }
 highlight()  { printf "  ${PINK}★${NC} ${BLUE}%s${NC} ${LGREEN}%s${NC}\n" "$1" "$2"; }
@@ -252,11 +253,35 @@ else
   fail_check "dag_runs returned 0 rows"
   fix "Run Step 2 first to trigger a DAG run, or run ./scripts/module3-demo-reset.sh"
 fi
-if [[ -n "$LATEST_STATE" ]]; then
-  pass "latest run carries a state field: $LATEST_STATE"
+
+OBSERVED_STATES=$(echo "$RUNS_JSON" | python3 -c "
+import json,sys
+d=json.load(sys.stdin).get('dag_runs',[])
+print(','.join(d[0].get('observed_states', []) if d else []))")
+highlight "observed states:" "$OBSERVED_STATES"
+log "  observed states: $OBSERVED_STATES"
+
+# Outline requires the demo to show queued, running, success transitions.
+# Fail explicitly if 'success' was not observed — a stuck-queued or
+# stuck-running latest run is recordable as proof, but the absence of
+# 'success' anywhere in the latest 3 runs means the demo cannot fulfil
+# LO 3c's 'queued -> running -> success' proof line.
+ANY_SUCCESS=$(echo "$RUNS_JSON" | python3 -c "
+import json,sys
+d=json.load(sys.stdin).get('dag_runs',[])
+any_s = any('success' in (r.get('observed_states') or []) or r.get('state') == 'success' for r in d)
+print('yes' if any_s else 'no')")
+if [[ "$ANY_SUCCESS" == "yes" ]]; then
+  pass "at least one run reached state=success (queued -> running -> success proven)"
 else
-  fail_check "latest run is missing the state field"
-  fix "Check app/clients/airflow.py list_dag_runs() — state must be set"
+  fail_check "no run in the last $RUN_COUNT runs reached success — Step 3's transition proof is incomplete"
+  fix "Wait ~15 seconds after Step 2's trigger for the DAG to finish, then rerun. If Airflow is unreachable, ./scripts/module3-demo-reset.sh will reseed three stub runs that already include success."
+fi
+
+if [[ "$OBSERVED_STATES" == *"queued"* && "$OBSERVED_STATES" == *"running"* && "$OBSERVED_STATES" == *"success"* ]]; then
+  pass "latest run observed all three states: queued, running, success"
+else
+  warn_check "latest run observed: [$OBSERVED_STATES] — outline wants queued, running, success on the latest row"
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════

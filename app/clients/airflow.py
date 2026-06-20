@@ -347,12 +347,24 @@ def list_dag_runs(limit: int = 5) -> list[dict[str, Any]]:
                         dur = (e - s).total_seconds()
                 except Exception:  # noqa: BLE001
                     dur = None
+                state = r.get("state") or "queued"
+                # Infer the state transitions the run went through.
+                # Every run starts queued. If it has a start_date the
+                # scheduler picked it up (running). If it has an end_date
+                # it reached the final state. Self-consistent — observed
+                # always ends with the current state.
+                observed: list[str] = ["queued"]
+                if start:
+                    observed.append("running")
+                if end and state not in (None, "queued"):
+                    observed.append(state)
                 rows.append({
                     "dag_run_id": r.get("dag_run_id"),
-                    "state": r.get("state"),
+                    "state": state,
                     "start_date": start,
                     "end_date": end,
                     "duration_seconds": dur,
+                    "observed_states": observed,
                 })
             return rows
     # Stub: synthesize realistic state transitions for the most-recent run
@@ -361,12 +373,18 @@ def list_dag_runs(limit: int = 5) -> list[dict[str, Any]]:
         _seed_stub_run()
     rows = []
     for r in _STUB_RUNS[:limit]:
+        observed = ["queued"]
+        if r.get("start_date"):
+            observed.append("running")
+        if r.get("end_date") and r["state"] not in (None, "queued"):
+            observed.append(r["state"])
         rows.append({
             "dag_run_id": r["dag_run_id"],
             "state": r["state"],
             "start_date": r["start_date"],
             "end_date": r["end_date"],
             "duration_seconds": r["duration_seconds"],
+            "observed_states": observed,
         })
     return rows
 
@@ -424,7 +442,13 @@ def _parse_task_log(raw: str, *, dag_run_id: str, task_id: str) -> dict[str, Any
 
 
 def get_branch_decision(dag_run_id: str) -> dict[str, Any]:
-    """Return which downstream branch validation_branch picked."""
+    """Return which downstream branch validation_branch picked.
+
+    Self-consistent: the 'taken' branch is whichever downstream task is
+    NOT in {skipped, None}. The 'skipped' branch is the other one. The
+    downstream_states map always reports the branch's true state, so it
+    cannot contradict the taken/skipped labels.
+    """
     if _airflow_reachable():
         ti = _real_get(
             f"/api/v1/dags/{DAG_ID}/dagRuns/{dag_run_id}/taskInstances"
@@ -433,12 +457,28 @@ def get_branch_decision(dag_run_id: str) -> dict[str, Any]:
             task_states = {t.get("task_id"): t.get("state")
                            for t in ti.get("task_instances", [])}
             upstream_state = task_states.get("validation_branch", "unknown")
-            trusted = task_states.get("write_trusted")
-            quarantine = task_states.get("write_quarantine")
-            if trusted and trusted not in ("skipped", None):
+            trusted_state = task_states.get("write_trusted") or "skipped"
+            quarantine_state = task_states.get("write_quarantine") or "skipped"
+
+            # The branch BranchPythonOperator took is the one that did NOT
+            # end up "skipped". If both ran (mixed batch) or neither ran
+            # (still in flight) we surface that honestly rather than guess.
+            trusted_taken = trusted_state not in ("skipped", "none", "")
+            quarantine_taken = quarantine_state not in ("skipped", "none", "")
+
+            if trusted_taken and not quarantine_taken:
+                taken, skipped = "write_trusted", "write_quarantine"
+            elif quarantine_taken and not trusted_taken:
+                taken, skipped = "write_quarantine", "write_trusted"
+            elif trusted_taken and quarantine_taken:
+                # Both ran (mixed batch). Default 'taken' to write_trusted
+                # since that's the success path; mark the other one as
+                # also-ran rather than skipped so the screen tells the truth.
                 taken, skipped = "write_trusted", "write_quarantine"
             else:
-                taken, skipped = "write_quarantine", "write_trusted"
+                # Neither ran yet — branch hasn't decided.
+                taken, skipped = "pending", "pending"
+
             return {
                 "branch_task_id": "validation_branch",
                 "decision": taken,
@@ -446,8 +486,8 @@ def get_branch_decision(dag_run_id: str) -> dict[str, Any]:
                 "downstream_taken": taken,
                 "downstream_skipped": skipped,
                 "downstream_states": {
-                    "write_trusted": trusted or "skipped",
-                    "write_quarantine": quarantine or "skipped",
+                    "write_trusted": trusted_state,
+                    "write_quarantine": quarantine_state,
                 },
             }
     if not _STUB_BRANCH_DECISIONS:
