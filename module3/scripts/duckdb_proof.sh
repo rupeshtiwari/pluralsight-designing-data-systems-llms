@@ -31,7 +31,7 @@ else
 fi
 
 "$PY" - "$DB_PATH" <<'PY'
-import sys, duckdb
+import sys, duckdb, shutil, textwrap
 
 PINK = "\033[38;2;255;22;117m"
 LIME = "\033[38;2;207;255;110m"
@@ -41,7 +41,21 @@ GRAY = "\033[38;2;191;191;191m"
 WHITE = "\033[1;37m"
 NC = "\033[0m"
 
+TERM_W = shutil.get_terminal_size((110, 24)).columns
 con = duckdb.connect(sys.argv[1], read_only=True)
+
+def hi(col, val):
+    sval = str(val)
+    prefix_plain = f"  ★ {col}: "
+    prefix_color = f"  {PINK}★{NC} {BLUE}{col}:{NC} "
+    indent = " " * len(prefix_plain)
+    width = max(40, TERM_W - len(prefix_plain))
+    wrapped = textwrap.wrap(sval, width=width, break_long_words=False,
+                            break_on_hyphens=False) or [""]
+    print(f"{prefix_color}{LGRN}{wrapped[0]}{NC}")
+    for line in wrapped[1:]:
+        print(f"{indent}{LGRN}{line}{NC}")
+    print()
 
 def section(table, header_color, caption, cols):
     rows = con.execute(
@@ -54,13 +68,8 @@ def section(table, header_color, caption, cols):
     print()
     if rows:
         for col, val in zip(cols, rows[0]):
-            sval = str(val)
-            if len(sval) > 80:
-                sval = sval[:77] + "..."
-            print(f"  {PINK}★{NC} {BLUE}{col}:{NC} {LGRN}{sval}{NC}")
-            print()
-    print(f"  {PINK}★{NC} {BLUE}row count:{NC} {LGRN}{count}{NC}")
-    print()
+            hi(col, val)
+    hi("row count", count)
 
 print(f"{WHITE}DuckDB CLI proof — trusted + quarantine schemas{NC}")
 
