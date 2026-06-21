@@ -14,7 +14,17 @@ set -euo pipefail
 # ─────────────────────────────────────────────────────────────────────────────
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-DB_PATH="${DUCKDB_PATH:-$PROJECT_ROOT/data/northwind.duckdb}"
+SOURCE_DB="${DUCKDB_PATH:-$PROJECT_ROOT/data/northwind.duckdb}"
+
+# FastAPI keeps an exclusive lock on the live DB file, so a second connection
+# (even read-only) is refused on macOS. Snapshot the file (and its WAL) to a
+# temp path and read from the snapshot — that path has no other holders and
+# DuckDB will open it immediately.
+SNAPSHOT_DIR="$(mktemp -d -t duckdb_proof_XXXXXX)"
+DB_PATH="$SNAPSHOT_DIR/northwind.duckdb"
+cp "$SOURCE_DB" "$DB_PATH"
+[ -f "${SOURCE_DB}.wal" ] && cp "${SOURCE_DB}.wal" "${DB_PATH}.wal"
+trap 'rm -rf "$SNAPSHOT_DIR"' EXIT
 
 BOLD='\033[1m'
 LIME='\033[38;2;163;230;53m'
@@ -46,7 +56,8 @@ PY
 }
 
 printf "${BOLD}DuckDB CLI proof — Module 3 Clip 4${NC}\n"
-printf "${GRAY}file: %s${NC}\n\n" "$DB_PATH"
+printf "${GRAY}file: %s${NC}\n" "$SOURCE_DB"
+printf "${GRAY}(read from a read-only snapshot so FastAPI's live writer keeps its lock)${NC}\n\n"
 
 printf "${BOLD}${LIME}trusted.feedback_enriched${NC}  (accepted rows the LLM produced and validation passed)\n"
 echo   "──────────────────────────────────────────────────────────────────────────────"
