@@ -99,6 +99,12 @@ if ! command -v curl >/dev/null 2>&1; then
 fi
 pass "curl found"
 
+if ! command -v jq >/dev/null 2>&1; then
+  warn "jq not found. Installing jq..."
+  brew install jq
+fi
+pass "jq found"
+
 echo ""
 echo "Checking Docker Desktop..."
 

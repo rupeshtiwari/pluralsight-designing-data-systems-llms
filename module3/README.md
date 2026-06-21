@@ -90,12 +90,13 @@ curl -s http://localhost:8000/admin/airflow-dag | python3 scripts/fmt.py --type 
 TRIGGER=$(curl -s -X POST http://localhost:8000/admin/airflow-trigger \
   -H "Content-Type: application/json" \
   -d @data/payloads/airflow_trigger.json)
+
 echo "$TRIGGER" | python3 scripts/fmt.py --type airflow-trigger \
   --title "Trigger northwind_llm_enrichment for BATCH-2024-001" \
   --why "Scheduler accepted the run — initial state is queued"
 
 # Capture the run id so Steps 3, 4, and 6 all pin to this exact run
-RUN_ID=$(echo "$TRIGGER" | python3 -c "import json,sys;print(json.load(sys.stdin)['dag_run_id'])")
+RUN_ID=$(echo "$TRIGGER" | jq -r '.dag_run_id')
 echo "RUN_ID=$RUN_ID"
 ```
 
