@@ -208,6 +208,16 @@ curl -s http://localhost:8000/agent/triage \
 
 Agents propose; humans approve. Every tool call is recorded in `agent_tool_calls`, every decision lands in `agent_decisions` with an explicit status, and the conditional edge keeps low-severity work from ever reaching the gate. The trusted finance tables are off-limits to the agent by design.
 
+## Operator pattern recap (final on-camera moment)
+
+Close the clip with a single command that names the six pieces of the LangGraph operator pattern the demo just proved — compiled topology, structured agent state, real execution path, durable tool receipts, decision ledger, and conditional routing — each paired with the step it came from:
+
+```bash
+module2/scripts/operator_pattern.sh
+```
+
+It prints a one-screen recap in Pluralsight brand colors. No data calls; no risk of a stale connection. The audience leaves with the vocabulary that ties Steps 1–5 together.
+
 ## Preflight check
 
 Before running the demo, execute the preflight script to verify all steps produce correct output:
@@ -234,3 +244,4 @@ This runs every demo step, captures commands and output, maps each step to its l
 - `data/payloads/agent_triage_low.json` — Low-severity demo payload (INC-2024-FIN-003)
 - `data/seed/incidents.json` — 3 NorthWind finance incident records
 - `scripts/fmt.py` — `--type triage`, `--type mermaid`, `--type tool-calls`, `--type agent-decisions`
+- `module2/scripts/operator_pattern.sh` — Final recap slide (six pattern names + the step each came from)
