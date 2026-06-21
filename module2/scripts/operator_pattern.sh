@@ -28,7 +28,7 @@ printf "${GRAY}%s${NC}\n\n" "$bar"
 
 row() {
   local step="$1"; local phrase="$2"
-  printf "  ${PINK}★${NC} ${BLUE}%-8s${NC} ${LGRN}%s${NC}\n" "$step:" "$phrase"
+  printf "  ${PINK}★${NC} ${BLUE}%-8s${NC} ${LGRN}%s${NC}\n\n" "$step:" "$phrase"
 }
 
 row "Step 1"  "compiled topology"
