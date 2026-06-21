@@ -148,7 +148,8 @@ else
   log "RESULT: FAIL — dag_id wrong"
 fi
 for t in extract_batch transform enrich_via_fastapi; do
-  if echo ",$STATIC," | grep -q ",$t,"; then
+  # Tolerate the ', ' separator used for display
+  if echo ",${STATIC// /}," | grep -q ",$t,"; then
     pass "static task present: $t"
   else
     fail_check "static task missing: $t"
