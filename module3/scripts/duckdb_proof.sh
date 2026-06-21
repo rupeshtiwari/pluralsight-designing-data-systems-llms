@@ -21,7 +21,16 @@ cp "$SOURCE_DB" "$DB_PATH"
 [ -f "${SOURCE_DB}.wal" ] && cp "${SOURCE_DB}.wal" "${DB_PATH}.wal"
 trap 'rm -rf "$SNAPSHOT_DIR"' EXIT
 
-python3 - "$DB_PATH" <<'PY'
+# Prefer the project venv python so the duckdb module installed by
+# requirements.txt is available. System python3 on macOS often does not
+# have duckdb and the script would crash with ModuleNotFoundError.
+if [ -x "$PROJECT_ROOT/.venv/bin/python" ]; then
+  PY="$PROJECT_ROOT/.venv/bin/python"
+else
+  PY="python3"
+fi
+
+"$PY" - "$DB_PATH" <<'PY'
 import sys, duckdb
 
 PINK = "\033[38;2;255;22;117m"
