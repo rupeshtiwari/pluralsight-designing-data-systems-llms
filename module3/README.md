@@ -4,7 +4,7 @@
 
 **The problem:** A notebook that classifies one row is not a production data pipeline. Real pipelines run on a schedule, retry on failure, branch when data is bad, and leave a trail that an on-call engineer can audit at 3 a.m. without paging the author. The hard question is not "can we call the LLM" — it is "when the LLM returns something the warehouse should not trust, does the orchestration catch it before the trusted table is touched, and can we prove it from the run history?"
 
-**What you will see:** A real Airflow DAG, `northwind_llm_enrichment`, triggered from a new source batch through a single FastAPI admin endpoint. The DAG carries three static transform tasks — `extract_batch`, `transform`, `enrich_via_fastapi` — and one dynamic branch task — `validation_branch` — that routes each enriched record to either `write_trusted` or `write_quarantine`. The same batch run produces both branches, so the disposition summary shows accepted and quarantined records side by side, each with a request_id, a row_id, and the reason quarantine fired.
+**What you will see:** A real Airflow DAG, `northwind_llm_enrichment`, triggered from a new source batch through a single FastAPI admin endpoint. The DAG carries three static transform tasks — `extract_batch`, `transform`, `enrich_via_fastapi` — and one dynamic branch task — `validation_branch` — that routes each enriched record to either `write_trusted` or `write_quarantine`. The same source batch produces both accepted and quarantined dispositions, while the validation branch chooses the safe downstream route for this run, so the disposition summary shows accepted and quarantined records side by side, each with a request_id, a row_id, and the reason quarantine fired.
 
 **What you walk away with:** A working comparison of static DAG structure versus bounded dynamic branching (3a), the concrete steps to wire an LLM call into an Airflow task without leaking secrets or losing audit trail (3b), how to trigger the run and watch it transition from queued through running to success from a CLI (3c), and the on-screen evidence that guardrails routed bad records to quarantine instead of contaminating the trusted table (3d). The best-practice callout — monitor dispositions, not just task success — is proven from the disposition summary endpoint.
 
@@ -110,11 +110,10 @@ echo "RUN_ID=$RUN_ID"
 
 ### Step 2b: Wait for this run to finish before inspecting it (off-camera helper)
 
-So Steps 3/4/6 query a run that has already reached its terminal state, run this one-liner between Step 2 and Step 3. It blocks until `RUN_ID` reports `success` (or 90 seconds elapse). It produces no on-camera output — it just ensures the next three steps see a finished run instead of an in-flight one.
+So Steps 3/4/6 query a run that has already reached its terminal state, run this one-liner between Step 2 and Step 3. It blocks until `RUN_ID` reports `success` (or 90 seconds elapse), and produces no on-camera output — it just ensures the next three steps see a finished run instead of an in-flight one.
 
 ```bash
-curl -s "http://localhost:8000/admin/airflow-wait-for-run?dag_run_id=${RUN_ID}&max_wait=90" >/dev/null \
-  && echo "RUN_ID ${RUN_ID} reached a terminal state"
+curl -s "http://localhost:8000/admin/airflow-wait-for-run?dag_run_id=${RUN_ID}&max_wait=90" >/dev/null
 ```
 
 ### Step 3: Watch state transitions (queued → running → success) (LO 3c)
@@ -129,13 +128,13 @@ curl -s "http://localhost:8000/admin/airflow-dag-runs?dag_run_id=${RUN_ID}&limit
 
 **Expected output**:
 
-- ★ runs shown: `3`
+- ★ runs shown: `1`
 - **latest run state transitions** (explicit proof of the outline's `queued → running → success` requirement):
   - ★ `queued`: observed (gray)
   - ★ `running`: observed (blue)
   - ★ `success`: observed (lime)
 - Columns: `dag_run_id`, `state` (colored), `duration_seconds`
-- One ★ row per recent run — the most recent in `success`, older ones the same
+- One ★ row for the exact run id captured in Step 2
 - state legend explains the color mapping
 
 **What the learner should notice**: This is the on-call view of the pipeline. The state-transition block at the top proves the run actually passed through `queued`, `running`, and `success` — each one observed and ★-highlighted in its brand color. Below it, one row per run, color-coded by state. The Airflow UI shows the same information in its Grid View, but here it is reachable from a script — which means alerts, dashboards, and CI checks can consume the same JSON. The `duration_seconds` column matters: a run that succeeded in 12 seconds and a run that succeeded in 12 minutes are both `state=success`, but only one of them is healthy. The state field is not a boolean — `queued`, `running`, `success`, `failed`, and `skipped` are all distinct, each carries a different operational meaning, and each is rendered in its own brand color so the eye picks out the failure cases instantly.
@@ -199,11 +198,11 @@ curl -s "http://localhost:8000/admin/airflow-branch-decision?dag_run_id=${RUN_ID
 **Expected output** (each star pairs the taken branch with its own state so the screen can never contradict itself):
 
 - ★ branch_task: `validation_branch`
-- ★ decision: `write_trusted` (or `write_quarantine`, whichever this run actually took)
+- ★ decision: `write_quarantine` (or `write_trusted`, whichever this run actually took)
 - ★ upstream_task_state: `success`
-- ★ downstream_taken: `write_trusted` (lime)
-- ★ `write_trusted` state: `success` (lime) — the branch that actually ran
-- ★ `write_quarantine` state: `skipped` (gray) — the sibling that did not run
+- ★ downstream_taken: `write_quarantine`
+- ★ `write_quarantine` state: `success` (lime) — the branch that actually ran
+- ★ `write_trusted` state: `skipped` (gray) — the sibling that did not run
 
 **What the learner should notice**: A static DAG would have run every downstream task once, every time. This view shows that `validation_branch` made an actual decision — it took one sibling and skipped the other. The state line beneath `downstream_taken` is paired with the SAME task name, so the screen can never claim a branch was taken but also report it as skipped — internal consistency is enforced by the endpoint. That is the dynamic orchestration half of LO 3a. The branch decision is the safety mechanism behind LO 3d as well: when the LLM proposal fails validation, the branch sends the record to `write_quarantine` instead of `write_trusted`, and the trusted table stays clean. The `upstream_task_state` field proves the branch ran on real upstream output, not on a hardcoded default. Same compiled DAG, different downstream every time, every decision visible from the CLI.
 
