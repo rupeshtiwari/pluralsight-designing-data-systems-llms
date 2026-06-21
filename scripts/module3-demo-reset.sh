@@ -43,9 +43,14 @@ ok "DuckDB cleared"
 # ── Reset Airflow containers when Docker is available ───────────────────────
 AIRFLOW_LIVE=0
 if command -v docker >/dev/null 2>&1; then
-  info "Stopping Airflow containers (if running)..."
-  docker compose stop airflow-webserver airflow-scheduler 2>/dev/null || true
-  ok "Airflow containers stopped"
+  info "Removing any orphan northwind containers (handles previous runs from other folders)..."
+  # Containers are pinned to hard-coded container_name values, so a previous
+  # `docker compose up` from a different project directory can leave the
+  # exact name claimed. `docker compose down` only knows the current project,
+  # so we force-remove by literal name to guarantee the next `up` is clean.
+  docker rm -f northwind-postgres northwind-airflow-webserver northwind-airflow-scheduler 2>/dev/null || true
+  docker compose down --remove-orphans 2>/dev/null || true
+  ok "Old containers removed"
 
   info "Starting Airflow + Postgres containers..."
   # Show docker output instead of swallowing it — silent failures here
