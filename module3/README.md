@@ -221,6 +221,21 @@ Open `http://localhost:8080` in a browser, log in as `admin / admin`, click `nor
 
 Show one short Airflow UI screen during the demo so the outline's "Airflow UI" proof line is on camera, then return to the terminal where the same facts are queryable from `curl` and the formatter renders them in one screen per step.
 
+## DuckDB CLI moment (one-screen visual)
+
+The outline also asks for literal proof that the trusted and quarantine tables exist as two distinct DuckDB schemas, not just as numbers in a FastAPI summary. Run one short DuckDB CLI moment in the recording right after Step 5:
+
+```bash
+module3/scripts/duckdb_proof.sh
+```
+
+That script reads `data/northwind.duckdb` directly and prints, in one screen:
+
+- ★ `trusted.feedback_enriched` — five most recent accepted rows (request_id, category, confidence, validation_status) and the total row count
+- ★ `quarantine.llm_outputs` — five most recent rejected rows (request_id, validation_errors) and the total row count
+
+The two table names are the literal proof the outline asks for. The accepted vs quarantined split here matches the count `/admin/disposition-summary` returned in Step 5 — same warehouse, two different lenses. The script uses the `duckdb` CLI when installed and falls back to the python `duckdb` module otherwise, so the recording renders the same output on any machine.
+
 ## Best-practice callout
 
 **Monitor dispositions, not just task success.**
@@ -251,4 +266,5 @@ The script runs all six demo steps, captures every command and its output, maps 
 - `data/payloads/airflow_trigger.json` — Batch trigger payload (BATCH-2024-001)
 - `scripts/fmt.py` — `--type airflow-dag`, `airflow-trigger`, `airflow-dag-runs`, `airflow-task-log`, `dispositions`, `airflow-branch`
 - `scripts/module3-demo-reset.sh` — Reset all state and seed one batch
+- `module3/scripts/duckdb_proof.sh` — DuckDB CLI proof moment (trusted + quarantine tables)
 - `module3/scripts/preflight_check.sh` — End-to-end demo verification with LO coverage block
