@@ -1414,12 +1414,6 @@ def fmt_airflow_dag_runs(data: dict) -> str:
             f"{LGRN}{dur_str}{RESET}"
         )
         lines.append("")
-    # State legend so the audience sees what each color means
-    lines.append(f"  {BLUE}state legend:{RESET}  "
-                 f"{GRAY}queued{RESET}  "
-                 f"{BLUE}running{RESET}  "
-                 f"{LIME}success{RESET}  "
-                 f"{PINK}failed{RESET}")
     # Trailing pad
     # TRAILING-PAD-MARKER
     lines.append("")

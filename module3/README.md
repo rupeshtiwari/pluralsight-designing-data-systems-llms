@@ -135,7 +135,6 @@ curl -s "http://localhost:8000/admin/airflow-dag-runs?dag_run_id=${RUN_ID}&limit
   - ★ `success`: observed (lime)
 - Columns: `dag_run_id`, `state` (colored), `duration_seconds`
 - One ★ row for the exact run id captured in Step 2
-- state legend explains the color mapping
 
 **What the learner should notice**: This is the on-call view of the pipeline. The state-transition block at the top proves the run actually passed through `queued`, `running`, and `success` — each one observed and ★-highlighted in its brand color. Below it, one row per run, color-coded by state. The Airflow UI shows the same information in its Grid View, but here it is reachable from a script — which means alerts, dashboards, and CI checks can consume the same JSON. The `duration_seconds` column matters: a run that succeeded in 12 seconds and a run that succeeded in 12 minutes are both `state=success`, but only one of them is healthy. The state field is not a boolean — `queued`, `running`, `success`, `failed`, and `skipped` are all distinct, each carries a different operational meaning, and each is rendered in its own brand color so the eye picks out the failure cases instantly.
 
