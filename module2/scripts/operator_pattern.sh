@@ -7,38 +7,36 @@ set -euo pipefail
 # Closes the clip with the six phrases that name the LangGraph operator
 # pattern the demo just proved. No data calls — just a clean terminal
 # slide so the audience leaves with the vocabulary.
+#
+# Uses the same brand palette and ★ label: value pattern that every demo
+# step formatter uses, so it visually belongs to the same clip.
 # ─────────────────────────────────────────────────────────────────────────────
 
-BOLD='\033[1m'
-PINK='\033[38;2;240;101;149m'
-LIME='\033[38;2;163;230;53m'
-LGRN='\033[38;2;132;204;22m'
-BLUE='\033[38;2;56;189;248m'
-GRAY='\033[38;2;148;163;184m'
-WHITE='\033[38;2;255;255;255m'
-NC='\033[0m'
+PINK="\033[38;2;255;22;117m"      # ★ marker
+LIME="\033[38;2;207;255;110m"     # heading
+LGRN="\033[38;2;64;255;191m"      # value (pattern phrase)
+BLUE="\033[38;2;42;236;250m"      # label (step)
+GRAY="\033[38;2;191;191;191m"     # footer
+WHITE="\033[1;37m"
+NC="\033[0m"
 
-bar="══════════════════════════════════════════════════════════════════════"
+bar="──────────────────────────────────────────────────────────────────────"
 
 printf "\n"
-printf "${PINK}╔%s╗${NC}\n" "$bar"
-printf "${PINK}║${NC}   ${BOLD}${WHITE}LangGraph operator pattern — what this clip proved${NC}              ${PINK}║${NC}\n"
-printf "${PINK}╚%s╝${NC}\n" "$bar"
-printf "\n"
+printf "${WHITE}LangGraph operator pattern — what this clip proved${NC}\n"
+printf "${GRAY}%s${NC}\n\n" "$bar"
 
 row() {
-  local color="$1"; local label="$2"; local proof="$3"
-  printf "   ${color}●${NC} ${BOLD}${color}%-26s${NC}  ${GRAY}%s${NC}\n" "$label" "$proof"
-  printf "\n"
+  local step="$1"; local phrase="$2"
+  printf "  ${PINK}★${NC} ${BLUE}%-8s${NC} ${LGRN}%s${NC}\n" "$step:" "$phrase"
 }
 
-row "$LIME" "compiled topology"        "Step 1   /agent/graph — Mermaid from compiled.get_graph()"
-row "$BLUE" "structured agent state"   "Step 2   /agent/triage returns full AgentState as JSON"
-row "$LIME" "real execution path"      "Step 2b  /agent/state/{id} — node-by-node trace"
-row "$LGRN" "durable tool receipts"    "Step 3   agent_tool_calls table in Postgres"
-row "$PINK" "decision ledger"          "Step 4   agent_decisions table — review_required status"
-row "$BLUE" "conditional routing"      "Step 5   high-severity → human gate, low-severity → auto-resolve"
+row "Step 1"  "compiled topology"
+row "Step 2"  "structured agent state"
+row "Step 2b" "real execution path"
+row "Step 3"  "durable tool receipts"
+row "Step 4"  "decision ledger"
+row "Step 5"  "conditional routing"
 
-printf "${PINK}%s${NC}\n" "──────────────────────────────────────────────────────────────────────"
-printf "   ${BOLD}${WHITE}Agents propose. Humans approve. Every step is auditable.${NC}\n"
-printf "${PINK}%s${NC}\n\n" "──────────────────────────────────────────────────────────────────────"
+printf "\n${GRAY}%s${NC}\n" "$bar"
+printf "${GRAY}Agents propose. Humans approve. Every step is auditable.${NC}\n\n"
