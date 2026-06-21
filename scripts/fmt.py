@@ -1410,7 +1410,7 @@ def fmt_airflow_dag_runs(data: dict) -> str:
         dur_str = f"{dur:.1f}s" if isinstance(dur, (int, float)) else "—"
         lines.append(
             f"  {PINK}★{RESET} {LGRN}{run_id:<44}{RESET}  "
-            f"{color}{state:<8}{RESET}  "
+            f"{color}{state:<10}{RESET}  "
             f"{LGRN}{dur_str}{RESET}"
         )
         lines.append("")
