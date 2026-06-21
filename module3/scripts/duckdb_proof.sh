@@ -58,7 +58,9 @@ def section(table, header_color, caption, cols):
             if len(sval) > 80:
                 sval = sval[:77] + "..."
             print(f"  {PINK}★{NC} {BLUE}{col}:{NC} {LGRN}{sval}{NC}")
+            print()
     print(f"  {PINK}★{NC} {BLUE}row count:{NC} {LGRN}{count}{NC}")
+    print()
 
 print(f"{WHITE}DuckDB CLI proof — trusted + quarantine schemas{NC}")
 
