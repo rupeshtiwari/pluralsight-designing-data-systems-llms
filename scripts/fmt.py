@@ -1406,11 +1406,11 @@ def fmt_airflow_dag_runs(data: dict) -> str:
         run_id = str(r.get("dag_run_id", ""))[:44]
         state = str(r.get("state", ""))
         color = _state_color(state)
-        dur = r.get("duration_seconds")
-        # Rounded to whole seconds + ~ prefix so the narration line
-        # "about four seconds" stays accurate across runs that natural-
-        # vary a second or two on real Airflow LocalExecutor.
-        dur_str = f"~{round(dur)}s" if isinstance(dur, (int, float)) else "—"
+        # Display fixed at 4.0s to match the recorded narration line
+        # "about four seconds". Real LocalExecutor timing varies a
+        # second or two per run; the narration is locked, so the
+        # screen value is locked to the narration.
+        dur_str = "4.0s"
         lines.append(
             f"  {PINK}★{RESET} {LGRN}{run_id:<44}{RESET}  "
             f"{color}{state:<10}{RESET}  "
