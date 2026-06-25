@@ -1787,6 +1787,10 @@ def main() -> None:
             data = {"decisions": data, "count": len(data)}
         elif args.type == "tool-calls":
             data = {"tool_calls": data, "count": len(data)}
+        elif args.type == "pipeline-runs":
+            # Module 4 — keep as a list; fmt_pipeline_runs expects to
+            # iterate the list itself, never an unwrapped single dict.
+            pass
         elif len(data) == 1 and isinstance(data[0], dict):
             data = data[0]
         elif args.type == "audit":
@@ -1798,7 +1802,7 @@ def main() -> None:
             # Fallback: wrap list for raw display
             data = {"items": data}
 
-    if not isinstance(data, dict):
+    if not isinstance(data, dict) and args.type != "pipeline-runs":
         print(_val(data))
         return
 
