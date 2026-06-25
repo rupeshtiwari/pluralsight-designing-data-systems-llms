@@ -92,7 +92,9 @@ fi
 # ── STEP 3 ──────────────────────────────────────────────────────────────────
 section "STEP 3/6: One valid output + at least one invalid reason" "LO 3d — reason text from the validator, not a generic 'rejected'"
 
-if [[ -n "$BATCH" ]]; then
+if [[ -z "$BATCH" ]]; then
+  failit "skipped — Step 2 produced no batch payload to inspect" "Make Step 2 pass first"
+elif [[ -n "$BATCH" ]]; then
   REASONS=$(echo "$BATCH" | python3 -c "import json,sys;d=json.load(sys.stdin);[print(r.get('reason','')) for r in d.get('details',[]) if r.get('validation_status')=='rejected']")
   REASON_COUNT=$(echo "$REASONS" | grep -c '[a-zA-Z]' || true)
   if [[ "$REASON_COUNT" -ge 1 ]]; then
@@ -114,7 +116,9 @@ fi
 # ── STEP 4 ──────────────────────────────────────────────────────────────────
 section "STEP 4/6: Airflow routing — accepted to trusted, rejected to quarantine" "LO 3c, 3d — proves disposition contract"
 
-if [[ -n "$BATCH_ID" ]]; then
+if [[ -z "$BATCH_ID" ]]; then
+  failit "skipped — Step 2 produced no batch_id to look up" "Make Step 2 pass first"
+elif [[ -n "$BATCH_ID" ]]; then
   printf "\n  Command:\n  \$ curl -s $API/pipeline/routing-detail/\$BATCH_ID | python3 scripts/fmt.py --type routing-detail\n\n"
   ROUTING=$(curl -sf "$API/pipeline/routing-detail/$BATCH_ID")
   if [[ -z "$ROUTING" ]]; then

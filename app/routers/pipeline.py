@@ -234,6 +234,15 @@ async def validate_batch(req: _ValidateBatchRequest) -> dict[str, Any]:
 
     rules = VALIDATION_RULES
     required = rules["required_fields_feedback"]
+    # Map internal validator keys to the outline-named checks the demo
+    # narration uses (schema, source_id, category, confidence). Keys not in
+    # the map (e.g. "severity") are passed through unchanged.
+    CHECK_RENAME = {
+        "required_fields": "schema",
+        "grounding": "source_id",
+        "confidence": "confidence",
+        "category": "category",
+    }
     accepted = 0
     rejected = 0
     failure_breakdown: dict[str, int] = {}
@@ -248,8 +257,12 @@ async def validate_batch(req: _ValidateBatchRequest) -> dict[str, Any]:
             required_fields=required,
         )
 
+        failed_internal = [
+            name for name, info in result["checks"].items()
+            if isinstance(info, dict) and not info.get("passed", True)
+        ]
+        failed_checks = [CHECK_RENAME.get(n, n) for n in failed_internal]
         validation_status = "accepted" if result["is_valid"] else "rejected"
-        failed_checks = [k for k, v in result["checks"].items() if v != "pass"]
         primary_reason = result["errors"][0] if result["errors"] else "all validation gates passed"
 
         if result["is_valid"]:
@@ -263,7 +276,7 @@ async def validate_batch(req: _ValidateBatchRequest) -> dict[str, Any]:
                 "category": enriched.get("category", ""),
                 "summary": enriched.get("summary", ""),
                 "confidence": float(enriched.get("confidence") or 0.0),
-                "source_doc_ids": ",".join(map(str, enriched.get("source_doc_ids") or [])),
+                "source_doc_ids": list(enriched.get("source_doc_ids") or []),
                 "validation_status": "accepted",
             })
         else:
@@ -271,18 +284,17 @@ async def validate_batch(req: _ValidateBatchRequest) -> dict[str, Any]:
             for check in failed_checks:
                 failure_breakdown[check] = failure_breakdown.get(check, 0) + 1
             duckdb_client.insert_quarantine({
-                "id": request_id,
+                "id": rejected,
                 "request_id": request_id,
                 "input_text": item.feedback_text or "",
-                "raw_output": str(enriched),
-                "validation_errors": "; ".join(result["errors"]),
+                "raw_output": enriched,
+                "validation_errors": result["errors"],
             })
 
         details.append({
             "feedback_id": item.feedback_id,
             "request_id": request_id,
             "validation_status": validation_status,
-            "checks": result["checks"],
             "failed_checks": failed_checks,
             "reason": primary_reason,
             "routed_to": "trusted.feedback_enriched" if result["is_valid"] else "quarantine.llm_outputs",
