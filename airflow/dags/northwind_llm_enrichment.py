@@ -87,13 +87,25 @@ def northwind_llm_enrichment_dag():
         Logs `key=value` lines for: batch_id, request_id,
         validation_result, output_row_id — so the admin task-log
         endpoint can extract the four outline-named fields.
+
+        If the triggering conf includes `feedback_texts` (a {id: text}
+        map), use those texts instead of the default placeholder. This
+        lets Module 4 trigger a deterministically mixed batch so both
+        downstream branches (write_trusted + write_quarantine) reach
+        state=success in a single Airflow run. Module 3 omits the
+        override and keeps its existing all-quarantine behavior.
         """
+        ctx = get_current_context()
+        conf = (ctx.get("dag_run").conf if ctx.get("dag_run") else {}) or {}
+        text_override = conf.get("feedback_texts", {}) or {}
         batch_id = record["batch_id"]
         enriched: list[dict] = []
         with httpx.Client(timeout=HTTP_TIMEOUT) as client:
             for fid in record["feedback_ids"]:
+                feedback_text = text_override.get(str(fid)) or text_override.get(fid) \
+                    or f"feedback record id={fid}"
                 payload = {"feedback_id": str(fid),
-                           "feedback_text": f"feedback record id={fid}"}
+                           "feedback_text": feedback_text}
                 try:
                     resp = client.post(f"{FASTAPI_URL}/enrich/feedback",
                                        json=payload)

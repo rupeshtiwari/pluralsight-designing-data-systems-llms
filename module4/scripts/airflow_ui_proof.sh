@@ -51,14 +51,16 @@ if [[ "$BACKEND" != "airflow" ]]; then
   exit 0
 fi
 
-# Trigger an Airflow DAG run with the proven mixed-batch payload
-# (feedback_ids [1, 99] — one accepted, one rejected — so the
-# @task.branch decorator returns BOTH write_trusted AND
-# write_quarantine and both downstream tasks reach success.
+# Trigger an Airflow DAG run with the Module 4 mixed-text payload.
+# The conf includes a `feedback_texts` override per feedback_id so the
+# LLM stub deterministically classifies one record as high-confidence
+# product_quality (accepted -> write_trusted=success) and the other
+# as keyword-free low-confidence (rejected -> write_quarantine=success).
+# Both downstream tasks reach state=success in a single run.
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TRIG=$(curl -sf -X POST "$API/admin/airflow-trigger" \
   -H "Content-Type: application/json" \
-  -d @"$PROJECT_ROOT/data/payloads/airflow_trigger.json" \
+  -d @"$PROJECT_ROOT/data/payloads/module4_airflow_trigger.json" \
   2>/dev/null || echo "")
 DAG_RUN_ID=$(echo "$TRIG" | python3 -c "import json,sys;print(json.load(sys.stdin).get('dag_run_id',''))" 2>/dev/null || echo "")
 
