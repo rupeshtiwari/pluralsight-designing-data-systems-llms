@@ -41,19 +41,31 @@ The reset script handles everything. Before the demo:
 ./scripts/module4-demo-reset.sh
 ```
 
-This stops any old FastAPI process, clears the DuckDB warehouse, removes orphan Airflow containers, restarts the stack, seeds the knowledge base, and seeds one validation batch so the demo has baseline data on the first call. When it finishes you should see:
+This stops any old FastAPI process, clears the DuckDB warehouse, removes orphan Airflow containers, restarts the stack, and seeds the knowledge base. DuckDB starts empty so the validation batch you produce during recording is the only one on screen. When the reset finishes you should see:
 
 - `[OK]   Airflow webserver is responding (after Ns)` — real Airflow up
 - `[OK]   FastAPI server started (PID ...)` — API live on port 8000
-- `[OK]   Seeded batch BATCH-VAL-XXXXXXXX — accepted=1, rejected=4` — validation gate routed the engineered records correctly
-
-Then run the preflight to verify every step renders correctly before recording:
-
-```bash
-module4/scripts/preflight_check.sh
-```
+- `pipeline_runs rows visible: 0` — clean slate
 
 ## Demo steps
+
+### Step 1: Batch input risk preview — ambiguous, stale, invalid (LO 3d)
+
+**Goal**: Before triggering the batch, show *why* each record is in it — which kind of bad input it represents and which validation gate is expected to catch it. This surfaces the outline's three intentional risk categories (`ambiguous feedback`, `stale or missing reference context`, `invalid category value`) literally on screen.
+
+```bash
+module4/scripts/batch_input_risk.sh
+```
+
+**Expected output** — five ★-blocked records:
+
+- ★ feedback_id `301` — input_risk: `clean reference, clean text` — expected_gate: `(passes every gate)`
+- ★ feedback_id `302` — input_risk: `ambiguous feedback` — expected_gate: `confidence`
+- ★ feedback_id `303` — input_risk: `invalid category value` — expected_gate: `category`
+- ★ feedback_id `304` — input_risk: `stale or missing reference context` — expected_gate: `source_id`
+- ★ feedback_id `305` — input_risk: `schema drift (missing required field)` — expected_gate: `schema`
+
+**What the learner should notice**: The batch is engineered. Each non-valid record demonstrates exactly one failure mode the outline names. When Step 3 fires the batch and Steps 4–7 show outcomes, the audience already knows which record should land where and why.
 
 ### Step 2: Show the five validation checks enforced after generation (LO 3d)
 
@@ -75,24 +87,6 @@ curl -s http://localhost:8000/validate/rules \
 - ★ disposition — branch routes accepted → trusted, rejected → quarantine
 
 **What the learner should notice**: The five checks are not framework defaults — they encode this organization's policy about what counts as a usable LLM output. The threshold, the allowed categories, and the required fields are all readable from `/validate/rules`, which means operators can audit the gate without reading source code. That readability is half the point of LO 3d: a guardrail you cannot inspect is a guardrail you cannot trust.
-
-### Step 1: Batch input risk preview — ambiguous, stale, invalid (LO 3d)
-
-**Goal**: Before triggering the batch, show *why* each record is in it — which kind of bad input it represents and which validation gate is expected to catch it. This surfaces the outline's three intentional risk categories (`ambiguous feedback`, `stale or missing reference context`, `invalid category value`) literally on screen.
-
-```bash
-module4/scripts/batch_input_risk.sh
-```
-
-**Expected output** — five ★-blocked records:
-
-- ★ feedback_id `301` — input_risk: `clean reference, clean text` — expected_gate: `(passes every gate)`
-- ★ feedback_id `302` — input_risk: `ambiguous feedback` — expected_gate: `confidence`
-- ★ feedback_id `303` — input_risk: `invalid category value` — expected_gate: `category`
-- ★ feedback_id `304` — input_risk: `stale or missing reference context` — expected_gate: `source_id`
-- ★ feedback_id `305` — input_risk: `schema drift (missing required field)` — expected_gate: `schema`
-
-**What the learner should notice**: The batch is engineered. Each non-valid record demonstrates exactly one failure mode the outline names. When Step 2 fires the batch and Steps 3–6 show outcomes, the audience already knows which record should land where and why.
 
 ### Step 3: Trigger the bad-data batch and capture the batch id (LO 3c, 3d)
 
