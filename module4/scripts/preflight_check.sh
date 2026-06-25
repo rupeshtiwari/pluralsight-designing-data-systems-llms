@@ -149,11 +149,12 @@ else
 fi
 
 # Strict: parse the three task states and FAIL if any of them is not 'success'.
-# A 'skipped' downstream branch contradicts the demo's accepted/rejected split
-# (trusted has 1 row, quarantine has 4 — both write tasks must have run).
-AF_RUN_STATE=$(echo "$AIRFLOW_OUT" | grep -E "validation_branch state:" | sed -E 's/.*validation_branch state:[[:space:]]+//; s/[[:space:]]*$//')
-AF_TRUSTED=$(echo "$AIRFLOW_OUT" | grep -E "write_trusted state:" | sed -E 's/.*write_trusted state:[[:space:]]+//; s/[[:space:]]*$//')
-AF_QUAR=$(echo "$AIRFLOW_OUT" | grep -E "write_quarantine state:" | sed -E 's/.*write_quarantine state:[[:space:]]+//; s/[[:space:]]*$//')
+# Strip ANSI color codes first — the airflow_ui_proof.sh output wraps each
+# value in ANSI sequences which break naive sed/grep substring extraction.
+AIRFLOW_CLEAN=$(printf '%s' "$AIRFLOW_OUT" | sed -E 's/\x1b\[[0-9;]*m//g')
+AF_RUN_STATE=$(printf '%s\n' "$AIRFLOW_CLEAN" | awk '/validation_branch state:/ {print $NF; exit}')
+AF_TRUSTED=$(printf '%s\n' "$AIRFLOW_CLEAN" | awk '/write_trusted state:/ {print $NF; exit}')
+AF_QUAR=$(printf '%s\n' "$AIRFLOW_CLEAN" | awk '/write_quarantine state:/ {print $NF; exit}')
 
 if echo "$AIRFLOW_OUT" | grep -q "NOTE.*backend reads as: memory"; then
   warnit "Airflow not running — script printed UI guidance instead (start Docker + reset)"

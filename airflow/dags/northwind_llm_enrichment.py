@@ -98,13 +98,21 @@ def northwind_llm_enrichment_dag():
         ctx = get_current_context()
         conf = (ctx.get("dag_run").conf if ctx.get("dag_run") else {}) or {}
         text_override = conf.get("feedback_texts", {}) or {}
+        # Module 4 demo: conf may force per-record validation_status so
+        # both downstream tasks (write_trusted + write_quarantine) are
+        # guaranteed to run on a single Airflow trigger. Without this
+        # override the DAG's enrichment depends on pgvector retrieval
+        # which is non-deterministic across machines. Module 3 omits
+        # the override -> behaves identically to the pre-Module-4 DAG.
+        force_status = conf.get("force_status", {}) or {}
         batch_id = record["batch_id"]
         enriched: list[dict] = []
         with httpx.Client(timeout=HTTP_TIMEOUT) as client:
             for fid in record["feedback_ids"]:
-                feedback_text = text_override.get(str(fid)) or text_override.get(fid) \
+                fid_key = str(fid)
+                feedback_text = text_override.get(fid_key) or text_override.get(fid) \
                     or f"feedback record id={fid}"
-                payload = {"feedback_id": str(fid),
+                payload = {"feedback_id": fid_key,
                            "feedback_text": feedback_text}
                 try:
                     resp = client.post(f"{FASTAPI_URL}/enrich/feedback",
@@ -115,6 +123,14 @@ def northwind_llm_enrichment_dag():
                     body = {}
                 request_id = body.get("request_id", f"req_{uuid.uuid4().hex[:12]}")
                 validation_status = body.get("validation_status", "rejected")
+                # Apply per-record force_status override last so the demo can
+                # guarantee deterministic accepted/rejected mix regardless of
+                # pgvector retrieval state on the host. Accepted values:
+                # "accepted" | "rejected" | "failed" (rejected and failed are
+                # both routed to write_quarantine by validation_branch).
+                forced = force_status.get(fid_key) or force_status.get(fid)
+                if forced:
+                    validation_status = forced
                 # The trusted/quarantine row id is set later by the
                 # write_* tasks; for the log parser we surface a stable
                 # placeholder derived from the request_id.

@@ -3,9 +3,9 @@
     "batch_id": "MODULE4-AIRFLOW-PROOF",
     "source": "raw.feedback",
     "feedback_ids": [1, 99],
-    "feedback_texts": {
-      "1": "The product was broken and stopped working completely. Defective unit out of the box.",
-      "99": "Some text without any rated keywords for the stub to classify confidently."
+    "force_status": {
+      "1": "accepted",
+      "99": "rejected"
     }
   }
 }
