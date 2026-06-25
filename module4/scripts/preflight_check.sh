@@ -147,15 +147,33 @@ if echo "$AIRFLOW_OUT" | grep -q "airflow_ui_url"; then
 else
   warnit "airflow_ui_url line missing — visible URL helps recording cut to the UI"
 fi
-if echo "$AIRFLOW_OUT" | grep -q "validation_branch state"; then
-  pass "validation_branch state surfaced from Airflow"
-elif echo "$AIRFLOW_OUT" | grep -q "NOTE.*backend reads as: memory"; then
-  warnit "Airflow not running — script printed UI guidance instead (Docker + reset to fix)"
+
+# Strict: parse the three task states and FAIL if any of them is not 'success'.
+# A 'skipped' downstream branch contradicts the demo's accepted/rejected split
+# (trusted has 1 row, quarantine has 4 — both write tasks must have run).
+AF_RUN_STATE=$(echo "$AIRFLOW_OUT" | grep -E "validation_branch state:" | sed -E 's/.*validation_branch state:[[:space:]]+//; s/[[:space:]]*$//')
+AF_TRUSTED=$(echo "$AIRFLOW_OUT" | grep -E "write_trusted state:" | sed -E 's/.*write_trusted state:[[:space:]]+//; s/[[:space:]]*$//')
+AF_QUAR=$(echo "$AIRFLOW_OUT" | grep -E "write_quarantine state:" | sed -E 's/.*write_quarantine state:[[:space:]]+//; s/[[:space:]]*$//')
+
+if echo "$AIRFLOW_OUT" | grep -q "NOTE.*backend reads as: memory"; then
+  warnit "Airflow not running — script printed UI guidance instead (start Docker + reset)"
 else
-  failit "validation_branch state not shown" "airflow_ui_proof.sh failed; check /admin/airflow-branch-decision is reachable"
+  if [[ "$AF_RUN_STATE" == "success" ]]; then
+    pass "validation_branch state = success"
+  else
+    failit "validation_branch state = '$AF_RUN_STATE' (expected 'success')" "Verify DAG triggered + finished; check Airflow scheduler logs"
+  fi
+  if [[ "$AF_TRUSTED" == "success" ]]; then
+    pass "write_trusted state = success"
+  else
+    failit "write_trusted state = '$AF_TRUSTED' (expected 'success' — both branches must run on a mixed batch)" "Check data/payloads/module4_airflow_trigger.json includes feedback_texts override and the DAG reads it"
+  fi
+  if [[ "$AF_QUAR" == "success" ]]; then
+    pass "write_quarantine state = success"
+  else
+    failit "write_quarantine state = '$AF_QUAR' (expected 'success' — both branches must run on a mixed batch)" "Check data/payloads/module4_airflow_trigger.json includes feedback_texts override"
+  fi
 fi
-if echo "$AIRFLOW_OUT" | grep -q "write_trusted state"; then pass "write_trusted state surfaced"; fi
-if echo "$AIRFLOW_OUT" | grep -q "write_quarantine state"; then pass "write_quarantine state surfaced"; fi
 
 # ── STEP 6/7 ────────────────────────────────────────────────────────────────
 section "STEP 6/7: PostgreSQL pipeline_runs aggregate" "LO 3c — accepted, rejected, validation_summary"
