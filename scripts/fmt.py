@@ -1565,6 +1565,133 @@ def fmt_airflow_branch(data: dict) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# Module 4 — Validation / pipeline formatters
+# ---------------------------------------------------------------------------
+def fmt_validation_rules(data: dict) -> str:
+    """Module 4 Step 1 — five outline-named validation checks."""
+    lines: list[str] = []
+    lines.extend(_maybe_heading("Validation rules in force"))
+
+    threshold = data.get("confidence_threshold", "?")
+    cats = data.get("allowed_categories", []) or []
+    required = data.get("required_fields_feedback", []) or []
+
+    checks = [
+        ("schema",      f"required fields: {', '.join(required)}"),
+        ("source_id",   "every record needs at least one source_doc_id"),
+        ("category",    f"allowed values: {', '.join(cats)}"),
+        ("confidence",  f"must be >= {threshold}"),
+        ("disposition", "branch routes accepted -> trusted, rejected -> quarantine"),
+    ]
+    lines.append(f"  {BLUE}five validation checks enforced after generation:{RESET}")
+    lines.append("")
+    for name, detail in checks:
+        lines.append(_hi_wrap(name, detail))
+        lines.append("")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def fmt_validate_batch(data: dict) -> str:
+    """Module 4 Step 2/3 — per-record validation outcomes."""
+    lines: list[str] = []
+    lines.extend(_maybe_heading("Validation batch result"))
+
+    lines.append(_hi_wrap("batch_id", data.get("batch_id", "?")))
+    lines.append("")
+    lines.append(_hi_wrap("total", str(data.get("total", 0))))
+    lines.append("")
+    lines.append(_hi_wrap("accepted_count", str(data.get("accepted_count", 0))))
+    lines.append("")
+    lines.append(_hi_wrap("rejected_count", str(data.get("rejected_count", 0))))
+    lines.append("")
+
+    fb = data.get("failure_breakdown") or {}
+    if fb:
+        lines.append(f"  {BLUE}failure breakdown (which check caught which failure):{RESET}")
+        lines.append("")
+        for check, count in fb.items():
+            lines.append(_hi_wrap(check, f"{count} record(s) failed"))
+            lines.append("")
+
+    details = data.get("details") or []
+    if details:
+        lines.append(f"  {BLUE}per-record outcomes:{RESET}")
+        lines.append("")
+        for d in details:
+            status = d.get("validation_status", "?")
+            color = LIME if status == "accepted" else PINK
+            fid = d.get("feedback_id", "?")
+            reason = d.get("reason", "")
+            routed = d.get("routed_to", "")
+            lines.append(
+                f"  {PINK}★{RESET} {BLUE}feedback_id:{RESET} "
+                f"{LGRN}{fid}{RESET}  "
+                f"{BLUE}status:{RESET} {color}{status}{RESET}"
+            )
+            lines.append(_ctx_wrap("reason", reason))
+            lines.append(_ctx_wrap("routed_to", routed))
+            lines.append("")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def fmt_routing_detail(data: dict) -> str:
+    """Module 4 Step 4 — proves accepted -> trusted, rejected -> quarantine."""
+    lines: list[str] = []
+    lines.extend(_maybe_heading("Airflow routing — accepted vs quarantine"))
+
+    lines.append(_hi_wrap("batch_id", data.get("batch_id", "?")))
+    lines.append("")
+    lines.append(_hi_wrap("accepted_count", str(data.get("accepted_count", 0))))
+    lines.append("")
+    lines.append(_hi_wrap("rejected_count", str(data.get("rejected_count", 0))))
+    lines.append("")
+    lines.append(_hi_wrap("trusted_table", data.get("trusted_table", "?")))
+    lines.append("")
+    lines.append(_hi_wrap("quarantine_table", data.get("quarantine_table", "?")))
+    lines.append("")
+    fb = data.get("failure_breakdown") or {}
+    if fb:
+        lines.append(f"  {BLUE}why records were routed to quarantine:{RESET}")
+        lines.append("")
+        for check, count in fb.items():
+            lines.append(_hi_wrap(check, f"{count} record(s)"))
+            lines.append("")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def fmt_pipeline_runs(data: Any) -> str:
+    """Module 4 Step 5 — PostgreSQL pipeline_runs aggregate."""
+    lines: list[str] = []
+    lines.extend(_maybe_heading("pipeline_runs (PostgreSQL aggregate)"))
+
+    rows = data if isinstance(data, list) else (data.get("runs") or [])
+    rows = rows[:5]
+    lines.append(_hi_wrap("rows returned", str(len(rows))))
+    lines.append("")
+    for r in rows:
+        lines.append(_hi_wrap("batch_id", r.get("batch_id", "?")))
+        lines.append("")
+        lines.append(_hi_wrap("status", str(r.get("status", "?"))))
+        lines.append("")
+        lines.append(_hi_wrap("accepted", str(r.get("accepted", 0))))
+        lines.append("")
+        lines.append(_hi_wrap("rejected", str(r.get("rejected", 0))))
+        lines.append("")
+        vs = r.get("validation_summary") or {}
+        if vs:
+            summary = ", ".join(f"{k}={v}" for k, v in vs.items())
+            lines.append(_hi_wrap("validation_summary", summary))
+            lines.append("")
+        lines.append(f"  {GRAY}──────────────────────────────────────────────{RESET}")
+        lines.append("")
+    lines.append("")
+    return "\n".join(lines)
+
+
 FORMATTERS: dict[str, Any] = {
     "feedback": fmt_feedback,
     "dispute": fmt_dispute,
@@ -1595,6 +1722,11 @@ FORMATTERS: dict[str, Any] = {
     "airflow-task-log": fmt_airflow_task_log,
     "dispositions": fmt_dispositions,
     "airflow-branch": fmt_airflow_branch,
+    # Module 4 — Validation / pipeline formatters
+    "validation-rules": fmt_validation_rules,
+    "validate-batch": fmt_validate_batch,
+    "routing-detail": fmt_routing_detail,
+    "pipeline-runs": fmt_pipeline_runs,
 }
 
 

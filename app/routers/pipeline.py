@@ -213,6 +213,124 @@ async def list_pipeline_runs(limit: int = 50) -> list[dict[str, Any]]:
 
 
 # ------------------------------------------------------------------
+# Module 4 — POST /pipeline/validate-batch
+# ------------------------------------------------------------------
+class _ValidateBatchItem(BaseModel):
+    feedback_id: int | str
+    customer_id: str | None = None
+    product_id: str | None = None
+    feedback_text: str | None = None
+    enriched: dict[str, Any]
+
+
+class _ValidateBatchRequest(BaseModel):
+    items: list[_ValidateBatchItem]
+
+
+@router.post("/validate-batch")
+async def validate_batch(req: _ValidateBatchRequest) -> dict[str, Any]:
+    batch_id = f"BATCH-VAL-{uuid4().hex[:8].upper()}"
+    log.info("pipeline.validate_batch.start", batch_id=batch_id, total=len(req.items))
+
+    rules = VALIDATION_RULES
+    required = rules["required_fields_feedback"]
+    accepted = 0
+    rejected = 0
+    failure_breakdown: dict[str, int] = {}
+    details: list[dict[str, Any]] = []
+
+    for item in req.items:
+        request_id = f"req_{uuid4().hex[:12]}"
+        enriched = dict(item.enriched)
+
+        result = validate_enrichment_output(
+            enriched,
+            required_fields=required,
+        )
+
+        validation_status = "accepted" if result["is_valid"] else "rejected"
+        failed_checks = [k for k, v in result["checks"].items() if v != "pass"]
+        primary_reason = result["errors"][0] if result["errors"] else "all validation gates passed"
+
+        if result["is_valid"]:
+            accepted += 1
+            duckdb_client.insert_enriched_feedback({
+                "id": request_id,
+                "request_id": request_id,
+                "customer_id": item.customer_id or "",
+                "product_id": item.product_id or "",
+                "feedback_text": item.feedback_text or "",
+                "category": enriched.get("category", ""),
+                "summary": enriched.get("summary", ""),
+                "confidence": float(enriched.get("confidence") or 0.0),
+                "source_doc_ids": ",".join(map(str, enriched.get("source_doc_ids") or [])),
+                "validation_status": "accepted",
+            })
+        else:
+            rejected += 1
+            for check in failed_checks:
+                failure_breakdown[check] = failure_breakdown.get(check, 0) + 1
+            duckdb_client.insert_quarantine({
+                "id": request_id,
+                "request_id": request_id,
+                "input_text": item.feedback_text or "",
+                "raw_output": str(enriched),
+                "validation_errors": "; ".join(result["errors"]),
+            })
+
+        details.append({
+            "feedback_id": item.feedback_id,
+            "request_id": request_id,
+            "validation_status": validation_status,
+            "checks": result["checks"],
+            "failed_checks": failed_checks,
+            "reason": primary_reason,
+            "routed_to": "trusted.feedback_enriched" if result["is_valid"] else "quarantine.llm_outputs",
+        })
+
+    await postgres.insert_pipeline_run({
+        "batch_id": batch_id,
+        "status": "completed",
+        "total": len(req.items),
+        "accepted": accepted,
+        "rejected": rejected,
+        "quarantined": rejected,
+        "validation_summary": failure_breakdown,
+        "started_at": _dt.datetime.utcnow().isoformat(),
+        "completed_at": _dt.datetime.utcnow().isoformat(),
+    })
+
+    log.info("pipeline.validate_batch.done", batch_id=batch_id, accepted=accepted, rejected=rejected)
+
+    return {
+        "batch_id": batch_id,
+        "total": len(req.items),
+        "accepted_count": accepted,
+        "rejected_count": rejected,
+        "failure_breakdown": failure_breakdown,
+        "details": details,
+    }
+
+
+# ------------------------------------------------------------------
+# Module 4 — GET /pipeline/routing-detail/{batch_id}
+# ------------------------------------------------------------------
+@router.get("/routing-detail/{batch_id}")
+async def get_routing_detail(batch_id: str) -> dict[str, Any]:
+    run = await postgres.get_pipeline_run(batch_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"No pipeline run with batch_id {batch_id}")
+    return {
+        "batch_id": batch_id,
+        "accepted_count": run.get("accepted", 0),
+        "rejected_count": run.get("rejected", 0),
+        "trusted_table": "trusted.feedback_enriched",
+        "quarantine_table": "quarantine.llm_outputs",
+        "failure_breakdown": run.get("validation_summary", {}),
+    }
+
+
+# ------------------------------------------------------------------
 # GET /pipeline/run/{batch_id}
 # ------------------------------------------------------------------
 @router.get("/run/{batch_id}")
