@@ -1659,6 +1659,7 @@ def fmt_routing_detail(data: dict) -> str:
         for check, count in fb.items():
             lines.append(_hi_wrap(check, f"{count} record(s)"))
             lines.append("")
+    lines.append(_hi_wrap("best practice", "Rejecting bad output is a successful pipeline outcome"))
     lines.append("")
     return "\n".join(lines)
 

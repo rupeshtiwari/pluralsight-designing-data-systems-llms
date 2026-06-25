@@ -4,6 +4,7 @@
     "customer_id": "C-1007",
     "product_id": "P-1010",
     "feedback_text": "The headphones stopped working after two days. Completely defective unit.",
+    "_intent": {"input_risk": "clean reference, clean text", "expected_gate": "(passes every gate)"},
     "enriched": {
       "category": "product_quality",
       "summary": "Customer reports headphones failed within two days of purchase",
@@ -16,6 +17,7 @@
     "customer_id": "C-1002",
     "product_id": "P-3021",
     "feedback_text": "I am unsure how to describe this product, it is kind of okay maybe.",
+    "_intent": {"input_risk": "ambiguous feedback", "expected_gate": "confidence"},
     "enriched": {
       "category": "general_praise",
       "summary": "Ambiguous feedback with low confidence assessment",
@@ -28,6 +30,7 @@
     "customer_id": "C-1009",
     "product_id": "P-2050",
     "feedback_text": "The blender needs an electrical repair, it sparks when I plug it in.",
+    "_intent": {"input_risk": "invalid category value", "expected_gate": "category"},
     "enriched": {
       "category": "electronics_repair",
       "summary": "Customer reports electrical fault requiring repair",
@@ -40,6 +43,7 @@
     "customer_id": "C-1004",
     "product_id": "P-2050",
     "feedback_text": "Price increased 40 percent since last month with no improvement in quality.",
+    "_intent": {"input_risk": "stale or missing reference context", "expected_gate": "source_id"},
     "enriched": {
       "category": "pricing_concern",
       "summary": "Customer flags sharp price increase without quality improvement",
@@ -52,6 +56,7 @@
     "customer_id": "C-1005",
     "product_id": "P-4015",
     "feedback_text": "The shipment took two extra days to arrive but the contents were fine.",
+    "_intent": {"input_risk": "schema drift (missing required field)", "expected_gate": "schema"},
     "enriched": {
       "category": "shipping_delay",
       "confidence": 0.86,

@@ -44,6 +44,17 @@ if ! curl -sf "$API/health" >/dev/null 2>&1; then
 fi
 pass "Server is healthy"
 
+# ── STEP 2a (preview) ───────────────────────────────────────────────────────
+section "STEP 2a/6: Batch input risk preview" "LO 3d — surfaces ambiguous, stale, invalid intentionally"
+
+printf "\n  Command:\n  \$ module4/scripts/batch_input_risk.sh\n\n"
+RISK=$(module4/scripts/batch_input_risk.sh 2>&1 || true)
+echo "$RISK" | sed 's/^/  /'
+
+if echo "$RISK" | grep -q "ambiguous feedback"; then pass "outline phrase 'ambiguous feedback' surfaced"; else failit "'ambiguous feedback' missing from risk preview" "Edit module4_validation_batch.json record 302's _intent.input_risk"; fi
+if echo "$RISK" | grep -q "stale or missing reference context"; then pass "outline phrase 'stale or missing reference context' surfaced"; else failit "'stale or missing reference context' missing" "Edit module4_validation_batch.json record 304's _intent.input_risk"; fi
+if echo "$RISK" | grep -q "invalid category value"; then pass "outline phrase 'invalid category value' surfaced"; else failit "'invalid category value' missing" "Edit module4_validation_batch.json record 303's _intent.input_risk"; fi
+
 # ── STEP 1 ──────────────────────────────────────────────────────────────────
 section "STEP 1/6: Show the five validation checks" "LO 3d — schema, source_id, category, confidence, disposition"
 
@@ -168,6 +179,18 @@ echo "$DBOUT" | sed 's/^/  /' | head -40
 if echo "$DBOUT" | grep -q "trusted.feedback_enriched"; then pass "trusted.feedback_enriched rendered literally"; else failit "trusted.feedback_enriched missing from duckdb_proof output" "Verify module4/scripts/duckdb_proof.sh"; fi
 if echo "$DBOUT" | grep -q "quarantine.llm_outputs"; then pass "quarantine.llm_outputs rendered literally"; else failit "quarantine.llm_outputs missing from duckdb_proof output" "Verify module4/scripts/duckdb_proof.sh"; fi
 if echo "$DBOUT" | grep -q "validation_errors"; then pass "validation_errors field shown (reason preserved)"; else failit "validation_errors not shown" "duckdb_proof must select validation_errors column"; fi
+
+# ── Course summary (closing slide) ─────────────────────────────────────────
+section "CLOSING: Course summary slide" "Four design contracts the entire course delivered"
+
+printf "\n  Command:\n  \$ module4/scripts/course_summary.sh\n\n"
+SUM=$(module4/scripts/course_summary.sh 2>&1 || true)
+echo "$SUM" | sed 's/^/  /'
+
+if echo "$SUM" | grep -q "LLM placement"; then pass "contract 1 — LLM placement present"; else failit "'LLM placement' missing" "Edit module4/scripts/course_summary.sh row 'Module 1'"; fi
+if echo "$SUM" | grep -q "Boundary contracts"; then pass "contract 2 — Boundary contracts present"; else failit "'Boundary contracts' missing" "Edit module4/scripts/course_summary.sh row 'Module 2'"; fi
+if echo "$SUM" | grep -q "Orchestration control"; then pass "contract 3 — Orchestration control present"; else failit "'Orchestration control' missing" "Edit module4/scripts/course_summary.sh row 'Module 3'"; fi
+if echo "$SUM" | grep -q "Output validation"; then pass "contract 4 — Output validation present"; else failit "'Output validation' missing" "Edit module4/scripts/course_summary.sh row 'Module 4'"; fi
 
 # ── LO coverage ─────────────────────────────────────────────────────────────
 printf "\n${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"

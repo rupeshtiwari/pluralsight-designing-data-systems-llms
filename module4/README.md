@@ -30,6 +30,8 @@ This demo seeds a batch of five pre-enriched feedback records — one valid, fou
 | `/pipeline/routing-detail/{batch_id}` proves accepted records route to `trusted.feedback_enriched` and rejected records to `quarantine.llm_outputs` | Step 4 | 3c, 3d |
 | `pipeline_runs` aggregate in PostgreSQL shows accepted_count, rejected_count, and validation_summary | Step 5 | 3c |
 | DuckDB CLI shows accepted rows in `trusted.feedback_enriched` and rejected rows with reasons in `quarantine.llm_outputs` | Step 6 | 1d, 3d |
+| Best-practice callout `Rejecting bad output is a successful pipeline outcome` rendered on screen | Step 4 (★ best practice line) | 3d |
+| Course summary slide names the four design contracts (LLM placement, boundary contracts, orchestration control, output validation) | Closing | 1d |
 
 ## Prerequisites
 
@@ -73,6 +75,24 @@ curl -s http://localhost:8000/validate/rules \
 - ★ disposition — branch routes accepted → trusted, rejected → quarantine
 
 **What the learner should notice**: The five checks are not framework defaults — they encode this organization's policy about what counts as a usable LLM output. The threshold, the allowed categories, and the required fields are all readable from `/validate/rules`, which means operators can audit the gate without reading source code. That readability is half the point of LO 3d: a guardrail you cannot inspect is a guardrail you cannot trust.
+
+### Step 2a: Batch input risk preview — ambiguous, stale, invalid (LO 3d)
+
+**Goal**: Before triggering the batch, show *why* each record is in it — which kind of bad input it represents and which validation gate is expected to catch it. This surfaces the outline's three intentional risk categories (`ambiguous feedback`, `stale or missing reference context`, `invalid category value`) literally on screen.
+
+```bash
+module4/scripts/batch_input_risk.sh
+```
+
+**Expected output** — five ★-blocked records:
+
+- ★ feedback_id `301` — input_risk: `clean reference, clean text` — expected_gate: `(passes every gate)`
+- ★ feedback_id `302` — input_risk: `ambiguous feedback` — expected_gate: `confidence`
+- ★ feedback_id `303` — input_risk: `invalid category value` — expected_gate: `category`
+- ★ feedback_id `304` — input_risk: `stale or missing reference context` — expected_gate: `source_id`
+- ★ feedback_id `305` — input_risk: `schema drift (missing required field)` — expected_gate: `schema`
+
+**What the learner should notice**: The batch is engineered. Each non-valid record demonstrates exactly one failure mode the outline names. When Step 2 fires the batch and Steps 3–6 show outcomes, the audience already knows which record should land where and why.
 
 ### Step 2: Trigger the bad-data batch and capture the batch id (LO 3c, 3d)
 
@@ -182,13 +202,18 @@ module4/scripts/duckdb_proof.sh
 
 **What the learner should notice**: The two table names — `trusted.feedback_enriched` and `quarantine.llm_outputs` — are the literal proof the outline asks for. Same warehouse, two schemas, every row's disposition decided by the validation gate before it landed. The `validation_errors` column in quarantine preserves the exact reason, so a downstream operator can replay the failure without re-running the LLM. That is LO 1d in one screen: a data flow design where the LLM produces text, the validation gate decides which text becomes data, and the trusted table only ever receives text that passed every contract.
 
-## Airflow UI moment (one-screen visual)
+## Airflow UI moment (one-screen visual — outline requirement)
 
-Show one short Airflow UI screen so the outline's visual proof line is on camera:
+The outline asks for: *"Airflow UI shows validation task success with downstream accepted and quarantine branches."* Surface that visual in the recording:
 
 1. Open `http://localhost:8080`, log in `admin / admin`, click `northwind_llm_enrichment`.
-2. **Grid view** — the latest run row is green (`success`); the visual equivalent of a successful pipeline outcome.
-3. **Graph view** — `validation_branch` fans out to `write_trusted` and `write_quarantine`. The branch the most recent run took is colored success; the sibling is colored skipped. This is the topology the outline calls "downstream accepted and quarantine branches".
+2. **Grid view** — the latest DAG-run row is green (`success`); this is the "validation task success" the outline calls for.
+3. **Graph view** — the topology shows the three task names the audience should leave with:
+   - ★ `validation_branch` — the gate that decides accepted vs rejected
+   - ★ `write_trusted` — the downstream accepted branch (lime when the run took it, gray when it was skipped)
+   - ★ `write_quarantine` — the downstream rejected branch (lime when the run took it, gray when it was skipped)
+
+That is the literal "downstream accepted and quarantine branches" the outline names. The terminal Steps 4 and 6 prove the same routing from the data side; the UI moment is the visual half of the proof.
 
 ## Course summary slide (final moment)
 

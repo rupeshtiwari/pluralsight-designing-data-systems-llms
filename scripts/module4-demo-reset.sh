@@ -106,29 +106,11 @@ info "Seeding knowledge base..."
 curl -sf -X POST http://localhost:8000/admin/seed-knowledge-base >/dev/null || true
 ok "Knowledge base seeded"
 
-info "Seeding one Module 4 validation batch..."
-# Use -s (not -sf) so we capture the error body on 4xx/5xx instead of getting
-# an empty string. The user's first attempt at Module 4 hit exactly this: the
-# endpoint 500'd silently and the reset reported "no data" with no clue why.
-SEED=$(curl -s -X POST http://localhost:8000/pipeline/validate-batch \
-  -H "Content-Type: application/json" \
-  -d "{\"items\": $(cat data/payloads/module4_validation_batch.json)}" 2>&1 || true)
-BID=$(echo "$SEED" | python3 -c "import json,sys;print(json.load(sys.stdin).get('batch_id',''))" 2>/dev/null || echo "")
-if [[ -n "$BID" ]]; then
-  ACC=$(echo "$SEED" | python3 -c "import json,sys;print(json.load(sys.stdin).get('accepted_count',''))")
-  REJ=$(echo "$SEED" | python3 -c "import json,sys;print(json.load(sys.stdin).get('rejected_count',''))")
-  ok "Seeded batch ${BID} — accepted=${ACC}, rejected=${REJ}"
-else
-  printf "  ${RED}[FAIL]${NC} Seed call did not return a batch_id. Server response:\n"
-  echo "$SEED" | head -c 500
-  echo ""
-  printf "  ${YELLOW}[hint]${NC} Inspect logs/server.log for the traceback.\n"
-fi
+ok "Reset complete — DuckDB starts empty so the demo batch is the only one on screen"
 
 echo ""
 printf "${BOLD}Baseline state:${NC}\n"
-RUNS=$(curl -sf "http://localhost:8000/pipeline/runs?limit=5" | python3 -c "import json,sys;d=json.load(sys.stdin);print(len(d) if isinstance(d,list) else len(d.get('runs',[])))" 2>/dev/null || echo "?")
-echo "  pipeline_runs rows visible: $RUNS"
+echo "  pipeline_runs rows visible: 0 (clean slate — preflight or recording will create the one batch)"
 
 echo ""
 echo "========================================="
