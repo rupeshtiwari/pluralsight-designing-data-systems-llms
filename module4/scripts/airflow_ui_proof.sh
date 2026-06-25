@@ -51,10 +51,14 @@ if [[ "$BACKEND" != "airflow" ]]; then
   exit 0
 fi
 
-# Trigger an Airflow DAG run carrying the Module 4 batch as conf
+# Trigger an Airflow DAG run with the proven mixed-batch payload
+# (feedback_ids [1, 99] — one accepted, one rejected — so the
+# @task.branch decorator returns BOTH write_trusted AND
+# write_quarantine and both downstream tasks reach success.
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TRIG=$(curl -sf -X POST "$API/admin/airflow-trigger" \
   -H "Content-Type: application/json" \
-  -d '{"conf": {"batch_id": "MOD4-AIRFLOW-PROOF", "source": "module4_validation_batch", "feedback_ids": [301, 302, 303, 304, 305]}}' \
+  -d @"$PROJECT_ROOT/data/payloads/airflow_trigger.json" \
   2>/dev/null || echo "")
 DAG_RUN_ID=$(echo "$TRIG" | python3 -c "import json,sys;print(json.load(sys.stdin).get('dag_run_id',''))" 2>/dev/null || echo "")
 
@@ -84,8 +88,8 @@ hi "validation_task_run_state" "${LATEST_STATE:-unknown}"
 # Pull branch decision — same data the UI shows for the three downstream tasks
 BRANCH=$(curl -sf "$API/admin/airflow-branch-decision?dag_run_id=$DAG_RUN_ID" 2>/dev/null || echo "")
 BRANCH_STATE=$(echo "$BRANCH" | python3 -c "import json,sys;print(json.load(sys.stdin).get('upstream_task_state','unknown'))" 2>/dev/null || echo "unknown")
-TRUSTED_STATE=$(echo "$BRANCH" | python3 -c "import json,sys;d=json.load(sys.stdin);s=d.get('task_states',{});print(s.get('write_trusted','unknown'))" 2>/dev/null || echo "unknown")
-QUAR_STATE=$(echo "$BRANCH" | python3 -c "import json,sys;d=json.load(sys.stdin);s=d.get('task_states',{});print(s.get('write_quarantine','unknown'))" 2>/dev/null || echo "unknown")
+TRUSTED_STATE=$(echo "$BRANCH" | python3 -c "import json,sys;d=json.load(sys.stdin);s=d.get('downstream_states',{});print(s.get('write_trusted','unknown'))" 2>/dev/null || echo "unknown")
+QUAR_STATE=$(echo "$BRANCH" | python3 -c "import json,sys;d=json.load(sys.stdin);s=d.get('downstream_states',{});print(s.get('write_quarantine','unknown'))" 2>/dev/null || echo "unknown")
 
 hi "validation_branch state" "$BRANCH_STATE"
 hi "write_trusted state"     "$TRUSTED_STATE"
