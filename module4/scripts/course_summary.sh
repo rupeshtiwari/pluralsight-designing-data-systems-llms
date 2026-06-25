@@ -25,14 +25,14 @@ printf "${WHITE}Course summary — the four design contracts you now own${NC}\n"
 printf "${GRAY}%s${NC}\n\n" "$bar"
 
 row() {
-  local module="$1"; local phrase="$2"
-  printf "  ${PINK}★${NC} ${BLUE}%-10s${NC} ${LGRN}%s${NC}\n\n" "$module:" "$phrase"
+  local label="$1"; local phrase="$2"
+  printf "  ${PINK}★${NC} ${BLUE}%s:${NC} ${LGRN}%s${NC}\n\n" "$label" "$phrase"
 }
 
-row "Module 1"  "LLM placement — where the model sits in the data flow"
-row "Module 2"  "Boundary contracts — agent tools and approval gates"
-row "Module 3"  "Orchestration control — trigger, monitor, branch on data"
-row "Module 4"  "Output validation — reject bad output as a successful outcome"
+row "LLM placement"        "where the model belongs in the data flow"
+row "Boundary contracts"   "how requests, tools, and approvals stay controlled"
+row "Orchestration control" "how execution, monitoring, and branching stay observable"
+row "Output validation"    "how bad output is rejected before trusted storage"
 
 printf "${GRAY}%s${NC}\n" "$bar"
 printf "${GRAY}You can now design data systems where LLM outputs land in trusted tables only after every contract holds.${NC}\n\n"

@@ -24,13 +24,13 @@ This demo seeds a batch of five pre-enriched feedback records — one valid, fou
 
 | Proof point | Step | LO |
 |-------------|------|----|
-| Five validation checks (schema, source_id, category, confidence, disposition) are enforced after generation | Step 1 | 3d |
-| `POST /pipeline/validate-batch` accepts a NorthWind batch with ambiguous feedback, stale context, and invalid category values, returns `batch_id` and per-record results | Step 2 | 3c, 3d |
-| FastAPI response shows one valid output and at least one invalid validation reason | Step 3 | 3d |
-| `/pipeline/routing-detail/{batch_id}` proves accepted records route to `trusted.feedback_enriched` and rejected records to `quarantine.llm_outputs` | Step 4 | 3c, 3d |
-| `pipeline_runs` aggregate in PostgreSQL shows accepted_count, rejected_count, and validation_summary | Step 5 | 3c |
-| DuckDB CLI shows accepted rows in `trusted.feedback_enriched` and rejected rows with reasons in `quarantine.llm_outputs` | Step 6 | 1d, 3d |
-| Best-practice callout `Rejecting bad output is a successful pipeline outcome` rendered on screen | Step 4 (★ best practice line) | 3d |
+| Batch input risk preview surfaces the outline phrases `ambiguous feedback`, `stale or missing reference context`, `invalid category value`, `schema drift` | Step 1 | 3d |
+| Five validation checks (schema, source_id, category, confidence, disposition) are enforced after generation | Step 2 | 3d |
+| `POST /pipeline/validate-batch` returns `batch_id`, accepted_count, rejected_count, failure_breakdown | Step 3 | 3c, 3d |
+| FastAPI response shows one valid output and at least one invalid validation reason + `★ best practice` callout | Step 4 | 3d |
+| Airflow UI / REST shows `validation_branch`, `write_trusted`, `write_quarantine` task states for a real DAG run | Step 5 | 3c |
+| `pipeline_runs` aggregate in PostgreSQL shows accepted_count, rejected_count, validation_summary | Step 6 | 3c |
+| DuckDB CLI shows accepted rows in `trusted.feedback_enriched` and rejected rows with reasons in `quarantine.llm_outputs` | Step 7 | 1d, 3d |
 | Course summary slide names the four design contracts (LLM placement, boundary contracts, orchestration control, output validation) | Closing | 1d |
 
 ## Prerequisites
@@ -55,7 +55,7 @@ module4/scripts/preflight_check.sh
 
 ## Demo steps
 
-### Step 1: Show the five validation checks enforced after generation (LO 3d)
+### Step 2: Show the five validation checks enforced after generation (LO 3d)
 
 **Goal**: Establish what "validation" means in this clip — the five outline-named checks (schema, source_id, category, confidence, disposition) the gate enforces on every generated record.
 
@@ -76,7 +76,7 @@ curl -s http://localhost:8000/validate/rules \
 
 **What the learner should notice**: The five checks are not framework defaults — they encode this organization's policy about what counts as a usable LLM output. The threshold, the allowed categories, and the required fields are all readable from `/validate/rules`, which means operators can audit the gate without reading source code. That readability is half the point of LO 3d: a guardrail you cannot inspect is a guardrail you cannot trust.
 
-### Step 2a: Batch input risk preview — ambiguous, stale, invalid (LO 3d)
+### Step 1: Batch input risk preview — ambiguous, stale, invalid (LO 3d)
 
 **Goal**: Before triggering the batch, show *why* each record is in it — which kind of bad input it represents and which validation gate is expected to catch it. This surfaces the outline's three intentional risk categories (`ambiguous feedback`, `stale or missing reference context`, `invalid category value`) literally on screen.
 
@@ -94,7 +94,7 @@ module4/scripts/batch_input_risk.sh
 
 **What the learner should notice**: The batch is engineered. Each non-valid record demonstrates exactly one failure mode the outline names. When Step 2 fires the batch and Steps 3–6 show outcomes, the audience already knows which record should land where and why.
 
-### Step 2: Trigger the bad-data batch and capture the batch id (LO 3c, 3d)
+### Step 3: Trigger the bad-data batch and capture the batch id (LO 3c, 3d)
 
 **Goal**: Run the NorthWind batch containing one valid record and four records engineered to fail one specific check each, and capture the `batch_id` so Steps 3, 4, and 5 all pin to this exact run.
 
@@ -122,7 +122,7 @@ echo "BATCH_ID=$BATCH_ID"
 
 **What the learner should notice**: The pipeline did not crash on bad data — it classified it. Five records went in, one came out as accepted, four were rejected, and the breakdown tells operators which validation gate caught which failure. That is the orchestration half of LO 3c — a single trigger produces structured, audit-grade output, not a stack trace.
 
-### Step 3: Show one valid output and at least one invalid validation reason (LO 3d)
+### Step 4: Show one valid output, invalid reasons, and the best-practice callout (LO 3d)
 
 **Goal**: Drill into the per-record outcomes from Step 2's response so the audience sees both the valid result and the specific reason each invalid record was rejected.
 
@@ -142,29 +142,28 @@ echo "$BATCH" | python3 scripts/fmt.py --type validate-batch \
 
 **What the learner should notice**: Each rejection carries the exact reason a human operator needs to fix it — not just `rejected`. That is the difference between a guardrail and a blocker. The valid record proves the gate is not just rejecting everything; the four invalid ones prove it is checking the specific properties the outline names. This single screen is the LO 3d demonstration: ambiguous input (`confidence 0.55`), stale reference context (`source_doc_ids = []`), invalid category (`electronics_repair`), and schema drift (`summary` missing) each get caught with a specific reason.
 
-### Step 4: Show Airflow routing — accepted to trusted, rejected to quarantine (LO 3c, 3d)
+### Step 5: Airflow UI routing proof — task states the grid shows (LO 3c)
 
-**Goal**: Prove the disposition decision routed each accepted record to `trusted.feedback_enriched` and each rejected record to `quarantine.llm_outputs` — the routing contract the Airflow validation task enforces.
+**Goal**: Pivot off the FastAPI layer and show the *Airflow side* of routing — the three downstream task states (`validation_branch`, `write_trusted`, `write_quarantine`) for a real DAG run. Same data the Airflow UI grid renders.
 
 ```bash
-curl -s "http://localhost:8000/pipeline/routing-detail/${BATCH_ID}" \
-  | python3 scripts/fmt.py --type routing-detail \
-  --title "Airflow routing for $BATCH_ID" \
-  --why "Accepted records → trusted; rejected → quarantine with failure breakdown"
+module4/scripts/airflow_ui_proof.sh
 ```
 
-**Expected output**:
+**Expected output** (Airflow live):
 
-- ★ batch_id: same id as Step 2
-- ★ accepted_count: `1`
-- ★ rejected_count: `4`
-- ★ trusted_table: `trusted.feedback_enriched`
-- ★ quarantine_table: `quarantine.llm_outputs`
-- why records were routed to quarantine — one ★ row per failed check with its count
+- ★ dag_run_id: the run this step just triggered
+- ★ validation_task_run_state: `success`
+- ★ validation_branch state: `success`
+- ★ write_trusted state: `success` or `skipped`
+- ★ write_quarantine state: `success` or `skipped`
+- ★ airflow_ui_url: `http://localhost:8080/dags/northwind_llm_enrichment/grid`
 
-**What the learner should notice**: The two table names are literal proof of where the records went, not where they were "supposed to" go. The same `validation_branch` pattern shown in Module 3 is the production routing primitive — accepted means "fits every contract", rejected means "violated at least one", and the gate puts each record in the schema that matches its disposition. The trusted table never sees a record that failed any check. That is the safety property LO 3d is asking the learner to design for.
+If Airflow is not running (memory backend), the script prints a clear NOTE plus the UI URL so the recording can pivot to the browser. The exact three task names listed above are the literal "downstream accepted and quarantine branches" the outline names.
 
-### Step 5: Show PostgreSQL pipeline_runs — accepted_count, rejected_count, validation_summary (LO 3c)
+**What the learner should notice**: This is the orchestration side of LO 3c. The validation rules in Step 2 say WHAT must hold; Step 5 proves WHO enforces it at runtime — Airflow's branch task, executing as an actual scheduled run. The UI URL is printed so the recording can cut to the browser for the visual moment; the terminal already proved the data with the three task states above.
+
+### Step 6: Show PostgreSQL pipeline_runs — accepted_count, rejected_count, validation_summary (LO 3c)
 
 **Goal**: Show the operational monitoring view — a single `pipeline_runs` row per batch that anyone wiring an alerting dashboard would query.
 
@@ -187,7 +186,7 @@ curl -s "http://localhost:8000/pipeline/runs?limit=3" \
 
 **What the learner should notice**: This is the layer monitoring code consumes. A run that completed without raising an exception is not a healthy run if the `rejected` column climbed — that is exactly the LO 3c lesson. The `validation_summary` column lets you alert per failure mode: an alert on `category=` rising means the LLM is drifting toward outputs your taxonomy does not cover, which is a different problem from `confidence=` rising (the LLM hedging on ambiguous input).
 
-### Step 6: DuckDB CLI proof — trusted + quarantine schemas (LO 1d, 3d)
+### Step 7: DuckDB CLI proof — trusted + quarantine schemas (LO 1d, 3d)
 
 **Goal**: Final on-camera proof that the routing decision actually landed rows in two distinct DuckDB schemas with the validation reason preserved end-to-end.
 

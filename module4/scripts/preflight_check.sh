@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -u
-# Module 4 — Clip 4 preflight: runs every demo step and verifies each one
-# produces the output the README expects. Logs to module4/preflight_log.txt.
+# Module 4 — Clip 4 preflight: runs every demo step in the order it will be
+# recorded and verifies each one produces the output the README expects.
+# Logs to module4/preflight_log.txt.
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$PROJECT_ROOT"
@@ -44,19 +45,19 @@ if ! curl -sf "$API/health" >/dev/null 2>&1; then
 fi
 pass "Server is healthy"
 
-# ── STEP 2a (preview) ───────────────────────────────────────────────────────
-section "STEP 2a/6: Batch input risk preview" "LO 3d — surfaces ambiguous, stale, invalid intentionally"
+# ── STEP 1/7 ────────────────────────────────────────────────────────────────
+section "STEP 1/7: Batch input risk preview" "LO 3d — surfaces ambiguous, stale, invalid, schema-drift"
 
 printf "\n  Command:\n  \$ module4/scripts/batch_input_risk.sh\n\n"
 RISK=$(module4/scripts/batch_input_risk.sh 2>&1 || true)
 echo "$RISK" | sed 's/^/  /'
 
-if echo "$RISK" | grep -q "ambiguous feedback"; then pass "outline phrase 'ambiguous feedback' surfaced"; else failit "'ambiguous feedback' missing from risk preview" "Edit module4_validation_batch.json record 302's _intent.input_risk"; fi
-if echo "$RISK" | grep -q "stale or missing reference context"; then pass "outline phrase 'stale or missing reference context' surfaced"; else failit "'stale or missing reference context' missing" "Edit module4_validation_batch.json record 304's _intent.input_risk"; fi
-if echo "$RISK" | grep -q "invalid category value"; then pass "outline phrase 'invalid category value' surfaced"; else failit "'invalid category value' missing" "Edit module4_validation_batch.json record 303's _intent.input_risk"; fi
+if echo "$RISK" | grep -q "ambiguous feedback"; then pass "outline phrase 'ambiguous feedback' surfaced"; else failit "'ambiguous feedback' missing" "Edit module4_validation_batch.json record 302 _intent.input_risk"; fi
+if echo "$RISK" | grep -q "stale or missing reference context"; then pass "outline phrase 'stale or missing reference context' surfaced"; else failit "'stale or missing reference context' missing" "Edit module4_validation_batch.json record 304 _intent.input_risk"; fi
+if echo "$RISK" | grep -q "invalid category value"; then pass "outline phrase 'invalid category value' surfaced"; else failit "'invalid category value' missing" "Edit module4_validation_batch.json record 303 _intent.input_risk"; fi
 
-# ── STEP 1 ──────────────────────────────────────────────────────────────────
-section "STEP 1/6: Show the five validation checks" "LO 3d — schema, source_id, category, confidence, disposition"
+# ── STEP 2/7 ────────────────────────────────────────────────────────────────
+section "STEP 2/7: Show the five validation checks" "LO 3d — schema, source_id, category, confidence, disposition"
 
 printf "\n  Command:\n  \$ curl -s $API/validate/rules | python3 scripts/fmt.py --type validation-rules\n\n"
 RULES_JSON=$(curl -sf "$API/validate/rules")
@@ -73,8 +74,8 @@ else
   if [[ "$CATS" -ge 3 ]]; then pass "allowed_categories list populated: $CATS values"; else failit "allowed_categories too small" "Add categories in app/config.py ALLOWED_CATEGORIES"; fi
 fi
 
-# ── STEP 2 ──────────────────────────────────────────────────────────────────
-section "STEP 2/6: Trigger bad-data batch via /pipeline/validate-batch" "LO 3c, 3d — one valid + four engineered failures"
+# ── STEP 3/7 ────────────────────────────────────────────────────────────────
+section "STEP 3/7: Trigger bad-data batch via /pipeline/validate-batch" "LO 3c, 3d — one valid + four engineered failures"
 
 printf "\n  Command:\n  \$ curl -s -X POST $API/pipeline/validate-batch -d @data/payloads/module4_validation_batch.json\n\n"
 BATCH=$(curl -sf -X POST "$API/pipeline/validate-batch" \
@@ -82,72 +83,82 @@ BATCH=$(curl -sf -X POST "$API/pipeline/validate-batch" \
   -d "{\"items\": $(cat data/payloads/module4_validation_batch.json)}")
 
 if [[ -z "$BATCH" ]]; then
-  failit "/pipeline/validate-batch returned empty" "Verify endpoint is registered in app/routers/pipeline.py and module4_validation_batch.json is valid JSON"
+  failit "/pipeline/validate-batch returned empty" "Verify endpoint is registered in app/routers/pipeline.py"
   BATCH_ID=""
 else
-  echo "$BATCH" | python3 scripts/fmt.py --type validate-batch \
-    --title "Validation batch with bad LLM outputs" \
-    --why "5 records: 1 valid, 4 engineered to fail one check each" 2>&1 | sed 's/^/  /'
-
   BATCH_ID=$(echo "$BATCH" | python3 -c "import json,sys;print(json.load(sys.stdin).get('batch_id',''))")
   ACC=$(echo "$BATCH" | python3 -c "import json,sys;print(json.load(sys.stdin).get('accepted_count',0))")
   REJ=$(echo "$BATCH" | python3 -c "import json,sys;print(json.load(sys.stdin).get('rejected_count',0))")
   TOT=$(echo "$BATCH" | python3 -c "import json,sys;print(json.load(sys.stdin).get('total',0))")
 
+  printf "\n  Summary (Step 3 narration reads these):\n\n"
+  printf "    ${GREEN}★${NC} batch_id:        ${BATCH_ID}\n\n"
+  printf "    ${GREEN}★${NC} total:           ${TOT}\n\n"
+  printf "    ${GREEN}★${NC} accepted_count:  ${ACC}\n\n"
+  printf "    ${GREEN}★${NC} rejected_count:  ${REJ}\n\n"
+
   if [[ -n "$BATCH_ID" ]]; then pass "batch_id assigned: $BATCH_ID"; else failit "batch_id missing" "Endpoint must return batch_id at top level"; fi
   if [[ "$TOT" == "5" ]]; then pass "total = 5 (matches payload)"; else failit "total != 5 (got $TOT)" "Check module4_validation_batch.json has 5 items"; fi
-  if [[ "$ACC" -ge 1 ]]; then pass "accepted_count >= 1 (got $ACC)"; else failit "accepted_count = 0" "Verify the first record in payload passes every check"; fi
+  if [[ "$ACC" -ge 1 ]]; then pass "accepted_count >= 1 (got $ACC)"; else failit "accepted_count = 0" "Verify first record passes every check"; fi
   if [[ "$REJ" -ge 1 ]]; then pass "rejected_count >= 1 (got $REJ)"; else failit "rejected_count = 0" "Verify other records trigger engineered failures"; fi
 fi
 
-# ── STEP 3 ──────────────────────────────────────────────────────────────────
-section "STEP 3/6: One valid output + at least one invalid reason" "LO 3d — reason text from the validator, not a generic 'rejected'"
+# ── STEP 4/7 ────────────────────────────────────────────────────────────────
+section "STEP 4/7: Confirm valid and invalid outcomes" "LO 3d — one valid + reasoned rejections + best-practice callout"
 
 if [[ -z "$BATCH" ]]; then
-  failit "skipped — Step 2 produced no batch payload to inspect" "Make Step 2 pass first"
-elif [[ -n "$BATCH" ]]; then
+  failit "skipped — Step 3 produced no batch payload" "Make Step 3 pass first"
+else
+  echo "$BATCH" | python3 scripts/fmt.py --type validate-batch \
+    --title "Per-record validation outcomes for $BATCH_ID" \
+    --why "One ★ row per record + best-practice callout" 2>&1 | sed 's/^/  /'
+
   REASONS=$(echo "$BATCH" | python3 -c "import json,sys;d=json.load(sys.stdin);[print(r.get('reason','')) for r in d.get('details',[]) if r.get('validation_status')=='rejected']")
   REASON_COUNT=$(echo "$REASONS" | grep -c '[a-zA-Z]' || true)
   if [[ "$REASON_COUNT" -ge 1 ]]; then
     pass "at least one rejected record carries a reason ($REASON_COUNT total)"
-    FIRST_REASON=$(echo "$REASONS" | head -1)
-    pass "first rejection reason: $FIRST_REASON"
+    pass "first rejection reason: $(echo "$REASONS" | head -1)"
   else
     failit "no rejection reasons returned" "Validator must populate result['errors'] for failed checks"
   fi
-
   VALID_COUNT=$(echo "$BATCH" | python3 -c "import json,sys;d=json.load(sys.stdin);print(sum(1 for r in d.get('details',[]) if r.get('validation_status')=='accepted'))")
   if [[ "$VALID_COUNT" -ge 1 ]]; then
-    pass "at least one accepted record present (count=$VALID_COUNT) — proves gate is not over-rejecting"
+    pass "at least one accepted record present (count=$VALID_COUNT)"
   else
-    failit "zero accepted records — gate may be rejecting everything" "Check the first payload record's enriched payload satisfies every rule"
+    failit "zero accepted records" "Check first payload record's enriched payload satisfies every rule"
+  fi
+  STEP4_OUT=$(echo "$BATCH" | python3 scripts/fmt.py --type validate-batch 2>&1)
+  if echo "$STEP4_OUT" | grep -q "best practice"; then
+    pass "★ best practice callout rendered: 'Rejecting bad output is a successful pipeline outcome'"
+  else
+    failit "best practice line missing from validate-batch output" "Re-check fmt_validate_batch for trailing ★ best practice append"
   fi
 fi
 
-# ── STEP 4 ──────────────────────────────────────────────────────────────────
-section "STEP 4/6: Airflow routing — accepted to trusted, rejected to quarantine" "LO 3c, 3d — proves disposition contract"
+# ── STEP 5/7 ────────────────────────────────────────────────────────────────
+section "STEP 5/7: Airflow UI routing proof" "LO 3c — same task states Airflow grid shows: validation_branch + write_trusted + write_quarantine"
 
-if [[ -z "$BATCH_ID" ]]; then
-  failit "skipped — Step 2 produced no batch_id to look up" "Make Step 2 pass first"
-elif [[ -n "$BATCH_ID" ]]; then
-  printf "\n  Command:\n  \$ curl -s $API/pipeline/routing-detail/\$BATCH_ID | python3 scripts/fmt.py --type routing-detail\n\n"
-  ROUTING=$(curl -sf "$API/pipeline/routing-detail/$BATCH_ID")
-  if [[ -z "$ROUTING" ]]; then
-    failit "/pipeline/routing-detail/$BATCH_ID returned empty" "Verify endpoint registered + batch_id was persisted in PG"
-  else
-    echo "$ROUTING" | python3 scripts/fmt.py --type routing-detail \
-      --title "Airflow routing for $BATCH_ID" \
-      --why "Accepted → trusted; rejected → quarantine" 2>&1 | sed 's/^/  /'
+printf "\n  Command:\n  \$ module4/scripts/airflow_ui_proof.sh\n\n"
+AIRFLOW_OUT=$(module4/scripts/airflow_ui_proof.sh 2>&1 || true)
+echo "$AIRFLOW_OUT" | sed 's/^/  /'
 
-    TR=$(echo "$ROUTING" | python3 -c "import json,sys;print(json.load(sys.stdin).get('trusted_table',''))")
-    QR=$(echo "$ROUTING" | python3 -c "import json,sys;print(json.load(sys.stdin).get('quarantine_table',''))")
-    if [[ "$TR" == "trusted.feedback_enriched" ]]; then pass "trusted_table = trusted.feedback_enriched"; else failit "trusted_table mismatch (got '$TR')" "Endpoint must hardcode trusted.feedback_enriched"; fi
-    if [[ "$QR" == "quarantine.llm_outputs" ]]; then pass "quarantine_table = quarantine.llm_outputs"; else failit "quarantine_table mismatch (got '$QR')" "Endpoint must hardcode quarantine.llm_outputs"; fi
-  fi
+if echo "$AIRFLOW_OUT" | grep -q "airflow_ui_url"; then
+  pass "airflow_ui_url printed for browser pivot"
+else
+  warnit "airflow_ui_url line missing — visible URL helps recording cut to the UI"
 fi
+if echo "$AIRFLOW_OUT" | grep -q "validation_branch state"; then
+  pass "validation_branch state surfaced from Airflow"
+elif echo "$AIRFLOW_OUT" | grep -q "NOTE.*backend reads as: memory"; then
+  warnit "Airflow not running — script printed UI guidance instead (Docker + reset to fix)"
+else
+  failit "validation_branch state not shown" "airflow_ui_proof.sh failed; check /admin/airflow-branch-decision is reachable"
+fi
+if echo "$AIRFLOW_OUT" | grep -q "write_trusted state"; then pass "write_trusted state surfaced"; fi
+if echo "$AIRFLOW_OUT" | grep -q "write_quarantine state"; then pass "write_quarantine state surfaced"; fi
 
-# ── STEP 5 ──────────────────────────────────────────────────────────────────
-section "STEP 5/6: PostgreSQL pipeline_runs aggregate" "LO 3c — accepted_count, rejected_count, validation_summary"
+# ── STEP 6/7 ────────────────────────────────────────────────────────────────
+section "STEP 6/7: PostgreSQL pipeline_runs aggregate" "LO 3c — accepted, rejected, validation_summary"
 
 printf "\n  Command:\n  \$ curl -s '$API/pipeline/runs?limit=3' | python3 scripts/fmt.py --type pipeline-runs\n\n"
 RUNS=$(curl -sf "$API/pipeline/runs?limit=3")
@@ -156,49 +167,41 @@ echo "$RUNS" | python3 scripts/fmt.py --type pipeline-runs \
   --why "One row per batch — accepted, rejected, validation_summary" 2>&1 | sed 's/^/  /' | tail -40
 
 ROWS=$(echo "$RUNS" | python3 -c "import json,sys;d=json.load(sys.stdin);print(len(d) if isinstance(d,list) else len(d.get('runs',[])))")
-if [[ "$ROWS" -ge 1 ]]; then
-  pass "pipeline_runs returned $ROWS row(s)"
-else
-  failit "pipeline_runs returned no rows" "Verify Step 2 persisted via postgres.insert_pipeline_run"
-fi
+if [[ "$ROWS" -ge 1 ]]; then pass "pipeline_runs returned $ROWS row(s)"; else failit "pipeline_runs returned no rows" "Verify Step 3 persisted via postgres.insert_pipeline_run"; fi
 
 HAS_SUMMARY=$(echo "$RUNS" | python3 -c "import json,sys;d=json.load(sys.stdin);rows=d if isinstance(d,list) else d.get('runs',[]);print('yes' if any(r.get('validation_summary') for r in rows) else 'no')")
-if [[ "$HAS_SUMMARY" == "yes" ]]; then
-  pass "at least one row carries validation_summary"
-else
-  warnit "no row has validation_summary — Step 5 narration about per-failure alerting will look thin"
-fi
+if [[ "$HAS_SUMMARY" == "yes" ]]; then pass "at least one row carries validation_summary"; else warnit "no row has validation_summary"; fi
 
-# ── STEP 6 ──────────────────────────────────────────────────────────────────
-section "STEP 6/6: DuckDB CLI — trusted + quarantine schemas" "LO 1d, 3d — literal table names + reason preserved"
+# ── STEP 7/7 ────────────────────────────────────────────────────────────────
+section "STEP 7/7: DuckDB CLI — trusted + quarantine schemas" "LO 1d, 3d — literal table names + reason preserved"
 
 printf "\n  Command:\n  \$ module4/scripts/duckdb_proof.sh\n\n"
 DBOUT=$(module4/scripts/duckdb_proof.sh 2>&1 || true)
 echo "$DBOUT" | sed 's/^/  /' | head -40
 
-if echo "$DBOUT" | grep -q "trusted.feedback_enriched"; then pass "trusted.feedback_enriched rendered literally"; else failit "trusted.feedback_enriched missing from duckdb_proof output" "Verify module4/scripts/duckdb_proof.sh"; fi
-if echo "$DBOUT" | grep -q "quarantine.llm_outputs"; then pass "quarantine.llm_outputs rendered literally"; else failit "quarantine.llm_outputs missing from duckdb_proof output" "Verify module4/scripts/duckdb_proof.sh"; fi
+if echo "$DBOUT" | grep -q "trusted.feedback_enriched"; then pass "trusted.feedback_enriched rendered literally"; else failit "trusted.feedback_enriched missing" "Check module4/scripts/duckdb_proof.sh"; fi
+if echo "$DBOUT" | grep -q "quarantine.llm_outputs"; then pass "quarantine.llm_outputs rendered literally"; else failit "quarantine.llm_outputs missing" "Check module4/scripts/duckdb_proof.sh"; fi
 if echo "$DBOUT" | grep -q "validation_errors"; then pass "validation_errors field shown (reason preserved)"; else failit "validation_errors not shown" "duckdb_proof must select validation_errors column"; fi
 
-# ── Course summary (closing slide) ─────────────────────────────────────────
-section "CLOSING: Course summary slide" "Four design contracts the entire course delivered"
+# ── Closing: Course summary ─────────────────────────────────────────────────
+section "CLOSING: Course summary slide" "Four design contracts the course delivered"
 
 printf "\n  Command:\n  \$ module4/scripts/course_summary.sh\n\n"
 SUM=$(module4/scripts/course_summary.sh 2>&1 || true)
 echo "$SUM" | sed 's/^/  /'
 
-if echo "$SUM" | grep -q "LLM placement"; then pass "contract 1 — LLM placement present"; else failit "'LLM placement' missing" "Edit module4/scripts/course_summary.sh row 'Module 1'"; fi
-if echo "$SUM" | grep -q "Boundary contracts"; then pass "contract 2 — Boundary contracts present"; else failit "'Boundary contracts' missing" "Edit module4/scripts/course_summary.sh row 'Module 2'"; fi
-if echo "$SUM" | grep -q "Orchestration control"; then pass "contract 3 — Orchestration control present"; else failit "'Orchestration control' missing" "Edit module4/scripts/course_summary.sh row 'Module 3'"; fi
-if echo "$SUM" | grep -q "Output validation"; then pass "contract 4 — Output validation present"; else failit "'Output validation' missing" "Edit module4/scripts/course_summary.sh row 'Module 4'"; fi
+if echo "$SUM" | grep -q "LLM placement"; then pass "contract 1 — LLM placement present"; else failit "'LLM placement' missing" "Edit module4/scripts/course_summary.sh"; fi
+if echo "$SUM" | grep -q "Boundary contracts"; then pass "contract 2 — Boundary contracts present"; else failit "'Boundary contracts' missing" "Edit module4/scripts/course_summary.sh"; fi
+if echo "$SUM" | grep -q "Orchestration control"; then pass "contract 3 — Orchestration control present"; else failit "'Orchestration control' missing" "Edit module4/scripts/course_summary.sh"; fi
+if echo "$SUM" | grep -q "Output validation"; then pass "contract 4 — Output validation present"; else failit "'Output validation' missing" "Edit module4/scripts/course_summary.sh"; fi
 
 # ── LO coverage ─────────────────────────────────────────────────────────────
 printf "\n${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 printf "  ${BOLD}LO COVERAGE${NC}\n"
 printf "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n\n"
-printf "  1d  Steps 2, 6  Data flow design — LLM output → validation → trusted vs quarantine\n"
-printf "  3c  Steps 2, 5  Trigger + monitor: validate-batch + pipeline_runs aggregate\n"
-printf "  3d  Steps 1, 3, 4, 6  Guardrails: rules, reasons, routing, persisted disposition\n\n"
+printf "  1d  Steps 3, 7        Data flow design — LLM output → validation → trusted vs quarantine\n"
+printf "  3c  Steps 3, 5, 6     Trigger + monitor: validate-batch + Airflow UI + pipeline_runs\n"
+printf "  3d  Steps 1, 2, 4, 7  Guardrails: input risk, rules, reasons + callout, persisted disposition\n\n"
 
 # ── Final verdict ───────────────────────────────────────────────────────────
 printf "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"

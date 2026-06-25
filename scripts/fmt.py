@@ -1633,6 +1633,7 @@ def fmt_validate_batch(data: dict) -> str:
             lines.append(_ctx_wrap("reason", reason))
             lines.append(_ctx_wrap("routed_to", routed))
             lines.append("")
+    lines.append(_hi_wrap("best practice", "Rejecting bad output is a successful pipeline outcome"))
     lines.append("")
     return "\n".join(lines)
 
