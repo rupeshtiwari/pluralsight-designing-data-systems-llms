@@ -105,6 +105,12 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 pass "jq found"
 
+if ! command -v tmux >/dev/null 2>&1; then
+  warn "tmux not found. Installing tmux..."
+  brew install tmux
+fi
+pass "tmux found: $(tmux -V 2>/dev/null || echo unknown)"
+
 echo ""
 echo "Checking Docker Desktop..."
 
@@ -255,6 +261,7 @@ pass "Python imports validated"
 MODULE1_STATUS="PASS"
 MODULE2_STATUS="PASS"
 MODULE3_STATUS="PASS"
+MODULE4_STATUS="PASS"
 
 # Local helpers used by the per-module sections so a single failed check
 # downgrades that module without aborting the rest of the script.
@@ -489,6 +496,116 @@ echo ""
 # Readiness summary — one line per module so the student can tell at a
 # glance whether every recordable demo is green before they hit record.
 # ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# [Module 4] Validation gate + Airflow routing readiness check
+# ─────────────────────────────────────────────────────────────────────────────
+section "[Module 4] Validation gate + Airflow routing readiness check"
+
+# 4.1 — assets the Module 4 demo needs on disk (payloads, scripts).
+M4_ASSETS=(
+  "data/payloads/module4_validation_batch.json"
+  "data/payloads/module4_airflow_trigger.json"
+  "module4/scripts/batch_input_risk.sh"
+  "module4/scripts/airflow_ui_proof.sh"
+  "module4/scripts/duckdb_proof.sh"
+  "module4/scripts/course_summary.sh"
+  "module4/scripts/preflight_check.sh"
+  "scripts/module4-demo-reset.sh"
+)
+M4_MISSING=()
+for f in "${M4_ASSETS[@]}"; do
+  if [[ ! -e "$PROJECT_ROOT/$f" ]]; then
+    M4_MISSING+=("$f")
+  fi
+done
+if [[ ${#M4_MISSING[@]} -eq 0 ]]; then
+  pass "all 8 Module 4 assets present (payloads + scripts)"
+else
+  module_fail MODULE4_STATUS "Module 4 missing files: ${M4_MISSING[*]}"
+fi
+
+# 4.2 — scripts are executable.
+M4_EXEC_MISSING=()
+for f in "${M4_ASSETS[@]}"; do
+  case "$f" in
+    *.sh)
+      if [[ ! -x "$PROJECT_ROOT/$f" ]]; then
+        chmod +x "$PROJECT_ROOT/$f" 2>/dev/null || M4_EXEC_MISSING+=("$f")
+      fi
+      ;;
+  esac
+done
+if [[ ${#M4_EXEC_MISSING[@]} -eq 0 ]]; then
+  pass "all Module 4 shell scripts are executable"
+else
+  module_fail MODULE4_STATUS "Could not chmod +x: ${M4_EXEC_MISSING[*]}"
+fi
+
+# 4.3 — validation endpoints are registered in the FastAPI app.
+M4_ROUTE_CHECK=$("$PROJECT_ROOT/.venv/bin/python" - 2>&1 <<'PY' || true
+from app.routers import pipeline, validation
+paths = {r.path for r in pipeline.router.routes} | {f"/validate{r.path}" for r in validation.router.routes}
+required = {"/pipeline/validate-batch", "/pipeline/routing-detail/{batch_id}",
+            "/pipeline/runs", "/validate/rules"}
+pipeline_paths = {r.path for r in pipeline.router.routes}
+validation_paths = {r.path for r in validation.router.routes}
+all_paths = {f"/pipeline{p}" for p in pipeline_paths} | {f"/validate{p}" for p in validation_paths}
+missing = [p for p in required if p not in all_paths]
+print("OK" if not missing else f"MISSING:{','.join(missing)}")
+PY
+)
+if echo "$M4_ROUTE_CHECK" | grep -q "^OK"; then
+  pass "Module 4 endpoints registered: /pipeline/validate-batch, /pipeline/routing-detail, /pipeline/runs, /validate/rules"
+else
+  module_fail MODULE4_STATUS "Module 4 endpoints missing — $M4_ROUTE_CHECK"
+fi
+
+# 4.4 — Airflow DAG file supports the conf['force_status'] override used by Step 5.
+if grep -q "force_status" "$PROJECT_ROOT/airflow/dags/northwind_llm_enrichment.py"; then
+  pass "DAG supports conf['force_status'] override (Module 4 Step 5 needs both downstream tasks to succeed)"
+else
+  module_fail MODULE4_STATUS "DAG missing force_status override — Module 4 airflow_ui_proof.sh will leave write_trusted skipped"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tech-stack validation — the outline names every tool below. Each must be
+# reachable AT THIS POINT in the install. A miss here means a module's demo
+# will silently fall back to a stub during recording.
+# ─────────────────────────────────────────────────────────────────────────────
+section "[Tech stack] Outline-required tools — final validation"
+
+TECH_FAIL=0
+_tech() {
+  local label="$1"; local check_cmd="$2"; local fix="$3"
+  if eval "$check_cmd" >/dev/null 2>&1; then
+    pass "$label"
+  else
+    printf "${RED}[FAIL]${NC} %s — fix: %s\n" "$label" "$fix"
+    _log "[FAIL] $label — fix: $fix"
+    TECH_FAIL=1
+  fi
+}
+
+_tech "FastAPI"                       ".venv/bin/python -c 'import fastapi'"                  "pip install -r requirements.txt"
+_tech "uvicorn"                       ".venv/bin/python -c 'import uvicorn'"                  "pip install -r requirements.txt"
+_tech "DuckDB CLI (brew)"             "command -v duckdb"                                      "brew install duckdb"
+_tech "DuckDB Python module"          ".venv/bin/python -c 'import duckdb'"                   "pip install -r requirements.txt"
+_tech "PostgreSQL driver (asyncpg)"   ".venv/bin/python -c 'import asyncpg'"                  "pip install -r requirements.txt"
+_tech "pgvector Python module"        ".venv/bin/python -c 'import pgvector'"                 "pip install -r requirements.txt"
+_tech "LangGraph"                     ".venv/bin/python -c 'import langgraph'"                "pip install -r requirements.txt"
+_tech "LangChain core"                ".venv/bin/python -c 'import langchain_core'"           "pip install -r requirements.txt"
+_tech "Apache Airflow image (Docker)" "docker image inspect apache/airflow:2.10.3"            "docker compose pull airflow-webserver"
+_tech "Docker Compose"                "docker compose version"                                 "Update Docker Desktop"
+_tech "tmux"                          "command -v tmux"                                        "brew install tmux"
+_tech "jq"                            "command -v jq"                                          "brew install jq"
+_tech "curl"                          "command -v curl"                                        "brew install curl"
+
+if [[ $TECH_FAIL -eq 0 ]]; then
+  pass "All outline-required tech stack is installed and reachable"
+else
+  printf "${RED}[FAIL]${NC} One or more outline-required tools missing — fix lines above and rerun.\n"
+fi
+
 _status_color() {
   case "$1" in
     PASS) printf "${GREEN}[PASS]${NC}" ;;
@@ -504,6 +621,7 @@ printf "${BOLD}======================================================${NC}\n"
 printf " Module 1 (FastAPI + DuckDB + pgvector)     %s\n" "$(_status_color "$MODULE1_STATUS")"
 printf " Module 2 (LangGraph + Postgres + pgvector) %s\n" "$(_status_color "$MODULE2_STATUS")"
 printf " Module 3 (Apache Airflow)                  %s\n" "$(_status_color "$MODULE3_STATUS")"
+printf " Module 4 (Validation gate + Airflow route) %s\n" "$(_status_color "$MODULE4_STATUS")"
 printf "${BOLD}======================================================${NC}\n"
 
 _log ""
@@ -513,11 +631,12 @@ _log "======================================================"
 _log " Module 1 (FastAPI + DuckDB + pgvector)     [$MODULE1_STATUS]"
 _log " Module 2 (LangGraph + Postgres + pgvector) [$MODULE2_STATUS]"
 _log " Module 3 (Apache Airflow)                  [$MODULE3_STATUS]"
+_log " Module 4 (Validation gate + Airflow route) [$MODULE4_STATUS]"
 _log "======================================================"
 
 # If any module failed, surface a clear nudge but still finish the
 # script so the student can see the summary + next-steps block.
-if [[ "$MODULE1_STATUS" == "FAIL" || "$MODULE2_STATUS" == "FAIL" || "$MODULE3_STATUS" == "FAIL" ]]; then
+if [[ "$MODULE1_STATUS" == "FAIL" || "$MODULE2_STATUS" == "FAIL" || "$MODULE3_STATUS" == "FAIL" || "$MODULE4_STATUS" == "FAIL" ]]; then
   printf "${RED}[FAIL]${NC} One or more module readiness checks failed — fix the lines above before recording.\n"
   _log "[FAIL] One or more module readiness checks failed."
 fi
@@ -545,6 +664,10 @@ echo "Module 3 demo:"
 echo "  docker compose up -d airflow-webserver airflow-scheduler"
 echo "  ./scripts/module3-demo-reset.sh"
 echo "  module3/scripts/preflight_check.sh"
+echo ""
+echo "Module 4 demo:"
+echo "  ./scripts/module4-demo-reset.sh"
+echo "  module4/scripts/preflight_check.sh"
 echo ""
 echo "Install log saved to: $LOG_FILE"
 echo ""
