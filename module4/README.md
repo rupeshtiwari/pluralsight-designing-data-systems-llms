@@ -97,7 +97,7 @@ BATCH=$(curl -s -X POST http://localhost:8000/pipeline/validate-batch \
   -H "Content-Type: application/json" \
   -d "{\"items\": $(cat data/payloads/module4_validation_batch.json)}")
 
-echo "$BATCH" | python3 scripts/fmt.py --type validate-batch \
+echo "$BATCH" | python3 scripts/fmt.py --type validate-batch-summary \
   --title "Validation batch with bad LLM outputs" \
   --why "5 records: 1 valid, 4 engineered to fail one check each"
 
@@ -121,7 +121,7 @@ echo "BATCH_ID=$BATCH_ID"
 **Goal**: Drill into the per-record outcomes from Step 2's response so the audience sees both the valid result and the specific reason each invalid record was rejected.
 
 ```bash
-echo "$BATCH" | python3 scripts/fmt.py --type validate-batch \
+echo "$BATCH" | python3 scripts/fmt.py --type validate-batch-details \
   --title "Per-record validation outcomes for $BATCH_ID" \
   --why "One ★ row per record — accepted in lime, rejected in pink with reason"
 ```

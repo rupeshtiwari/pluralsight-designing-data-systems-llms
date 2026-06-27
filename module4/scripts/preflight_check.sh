@@ -109,11 +109,9 @@ else
   REJ=$(echo "$BATCH" | python3 -c "import json,sys;print(json.load(sys.stdin).get('rejected_count',0))")
   TOT=$(echo "$BATCH" | python3 -c "import json,sys;print(json.load(sys.stdin).get('total',0))")
 
-  printf "\n  Summary (Step 3 narration reads these):\n\n"
-  printf "    ${GREEN}★${NC} batch_id:        ${BATCH_ID}\n\n"
-  printf "    ${GREEN}★${NC} total:           ${TOT}\n\n"
-  printf "    ${GREEN}★${NC} accepted_count:  ${ACC}\n\n"
-  printf "    ${GREEN}★${NC} rejected_count:  ${REJ}\n\n"
+  echo "$BATCH" | python3 scripts/fmt.py --type validate-batch-summary \
+    --title "Validation batch with bad LLM outputs" \
+    --why "5 records: 1 valid, 4 engineered to fail one check each" 2>&1 | sed 's/^/  /'
 
   if [[ -n "$BATCH_ID" ]]; then pass "batch_id assigned: $BATCH_ID"; else failit "batch_id missing" "Endpoint must return batch_id at top level"; fi
   if [[ "$TOT" == "5" ]]; then pass "total = 5 (matches payload)"; else failit "total != 5 (got $TOT)" "Check module4_validation_batch.json has 5 items"; fi
@@ -127,7 +125,7 @@ section "STEP 4/7: Confirm valid and invalid outcomes" "LO 3d — one valid + re
 if [[ -z "$BATCH" ]]; then
   failit "skipped — Step 3 produced no batch payload" "Make Step 3 pass first"
 else
-  echo "$BATCH" | python3 scripts/fmt.py --type validate-batch \
+  echo "$BATCH" | python3 scripts/fmt.py --type validate-batch-details \
     --title "Per-record validation outcomes for $BATCH_ID" \
     --why "One ★ row per record + best-practice callout" 2>&1 | sed 's/^/  /'
 
@@ -145,11 +143,11 @@ else
   else
     failit "zero accepted records" "Check first payload record's enriched payload satisfies every rule"
   fi
-  STEP4_OUT=$(echo "$BATCH" | python3 scripts/fmt.py --type validate-batch 2>&1)
+  STEP4_OUT=$(echo "$BATCH" | python3 scripts/fmt.py --type validate-batch-details 2>&1)
   if echo "$STEP4_OUT" | grep -q "best practice"; then
     pass "★ best practice callout rendered: 'Rejecting bad output is a successful pipeline outcome'"
   else
-    failit "best practice line missing from validate-batch output" "Re-check fmt_validate_batch for trailing ★ best practice append"
+    failit "best practice line missing from validate-batch-details output" "Re-check fmt_validate_batch_details for trailing ★ best practice append"
   fi
 fi
 
