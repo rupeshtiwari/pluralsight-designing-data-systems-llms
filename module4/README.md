@@ -168,15 +168,16 @@ curl -s "http://localhost:8000/pipeline/runs?limit=3" \
   --why "One row per batch — accepted_count, rejected_count, validation_summary"
 ```
 
-**Expected output**:
+**Expected output** (clean-slate recording — one batch was just produced):
 
-- ★ rows returned: `3` (or however many recent batches exist)
-- For each row:
-  - ★ batch_id
-  - ★ status: `completed`
-  - ★ accepted
-  - ★ rejected
-  - ★ validation_summary: `schema=N, source_id=N, category=N, confidence=N` (which checks fired for that batch)
+- ★ rows returned: `1`
+- ★ batch_id: the `BATCH-VAL-XXXXXXXX` captured in Step 3
+- ★ status: `completed`
+- ★ accepted: `1`
+- ★ rejected: `4`
+- ★ validation_summary: `confidence=1, category=1, source_id=1, schema=1`
+
+The `?limit=3` in the URL is a cap, not a target — only one batch exists after the clean reset, so the API returns one row. If you ever see more than one row here, it means a previous batch leaked through and the warehouse was not reset cleanly.
 
 **What the learner should notice**: This is the layer monitoring code consumes. A run that completed without raising an exception is not a healthy run if the `rejected` column climbed — that is exactly the LO 3c lesson. The `validation_summary` column lets you alert per failure mode: an alert on `category=` rising means the LLM is drifting toward outputs your taxonomy does not cover, which is a different problem from `confidence=` rising (the LLM hedging on ambiguous input).
 
