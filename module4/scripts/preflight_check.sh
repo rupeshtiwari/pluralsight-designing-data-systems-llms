@@ -45,6 +45,24 @@ if ! curl -sf "$API/health" >/dev/null 2>&1; then
 fi
 pass "Server is healthy"
 
+# ── Clean-slate precondition ────────────────────────────────────────────────
+# Preflight must run on an empty warehouse so the assertions about row counts
+# (1 trusted, 4 quarantine, 1 pipeline_runs row) reflect THIS run only.
+# Without this guard, running preflight after a manual walkthrough — or twice
+# in a row — silently passes on inflated counts, which then drifts away from
+# the recorded narration.
+PRECHECK_RUNS=$(curl -sf "$API/pipeline/runs?limit=10" \
+  | python3 -c "import json,sys;d=json.load(sys.stdin);print(len(d) if isinstance(d,list) else len(d.get('runs',[])))" 2>/dev/null || echo "0")
+if [[ "$PRECHECK_RUNS" -gt 0 ]]; then
+  printf "\n  ${RED}✗ FAIL${NC}  pipeline_runs already has %s row(s) — preflight requires a clean slate\n" "$PRECHECK_RUNS"
+  printf "         ${YELLOW}fix:${NC} ./scripts/module4-demo-reset.sh   then re-run this script\n"
+  printf "\n  ${YELLOW}Why this matters:${NC} a dirty warehouse silently passes preflight on the WRONG counts,\n"
+  printf "  which drift away from the recorded narration (1 accepted, 4 rejected). The reset clears\n"
+  printf "  the DuckDB warehouse and pipeline_runs so preflight reflects exactly one validation batch.\n\n"
+  exit 1
+fi
+pass "Clean slate confirmed: pipeline_runs is empty"
+
 # ── STEP 1/7 ────────────────────────────────────────────────────────────────
 section "STEP 1/7: Batch input risk preview" "LO 3d — surfaces ambiguous, stale, invalid, schema-drift"
 
