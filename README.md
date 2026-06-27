@@ -98,12 +98,88 @@ repo-root/
 
 ## Modules
 
-| Module | Title | Duration | Demo clip |
-|--------|-------|----------|-----------|
-| 1 | Designing LLM boundaries in data pipelines | 15 min | Enriching e-commerce feedback with FastAPI, DuckDB, and pgvector |
-| 2 | Architecting agentic data workflows with LangGraph | 15 min | LangGraph agent triage with PostgreSQL and API tools |
-| 3 | Orchestrating LLM data pipelines with Apache Airflow | 15 min | Triggering and monitoring an Airflow enrichment pipeline |
-| 4 | Validating and guardrailing LLM outputs in data pipelines | 15 min | Rejecting hallucinated and schema-drifted LLM outputs |
+Each module has a self-contained recording runbook (`moduleN/README.md`), a one-script environment-readiness check, a reset script that brings the demo to a clean state, and a preflight script that runs every step and asserts the output is correct.
+
+### Module 1 — Designing LLM boundaries in data pipelines
+
+- **Clip 4 (6 min)**: Enriching e-commerce feedback with FastAPI, DuckDB, and pgvector
+- **Learning objectives**:
+  - **1a** — Identify where LLMs fit (and don't) in production data flows
+  - **1b** — Design API boundaries that contain LLM uncertainty
+  - **1c** — Persist enrichments with provenance to DuckDB + pgvector
+  - **1d** — Demonstrate designing data flows that incorporate LLM outputs
+- **Runbook**: [module1/README.md](module1/README.md)
+- **Source**:
+  - Endpoints — [app/routers/enrichment.py](app/routers/enrichment.py)
+  - LLM stub — [app/services/llm.py](app/services/llm.py)
+  - Warehouse client — [app/db/duckdb_client.py](app/db/duckdb_client.py)
+  - Vector store — [app/db/pgvector.py](app/db/pgvector.py)
+  - Scripts — [module1/scripts/](module1/scripts/)
+- **Env check / reset**: `environment-setup/install-macos-requirements.sh`, then `./scripts/module1-demo-reset.sh`
+
+### Module 2 — Architecting agentic data workflows with LangGraph
+
+- **Clip 4 (6 min)**: LangGraph agent triage with PostgreSQL and API tool boundaries
+- **Learning objectives**:
+  - **2a** — Compile a bounded LangGraph topology with a real `StateGraph`
+  - **2b** — Wire tool calls + decision ledger to PostgreSQL for auditability
+  - **2c** — Implement conditional routing for human approval gates
+- **Runbook**: [module2/README.md](module2/README.md)
+- **Source**:
+  - Compiled graph — [app/services/agent_graph.py](app/services/agent_graph.py)
+  - Endpoints — [app/routers/agent.py](app/routers/agent.py)
+  - PostgreSQL tables — [app/db/postgres.py](app/db/postgres.py)
+  - Scripts — [module2/scripts/](module2/scripts/)
+  - Operator pattern recap — [module2/scripts/operator_pattern.sh](module2/scripts/operator_pattern.sh)
+- **Env check / reset**: `environment-setup/install-macos-requirements.sh`, then `./scripts/module2-demo-reset.sh`
+
+### Module 3 — Orchestrating LLM data pipelines with Apache Airflow
+
+- **Clip 4 (6 min)**: Triggering and monitoring an Airflow enrichment pipeline with FastAPI and DuckDB
+- **Learning objectives**:
+  - **3a** — Compare static DAG structure to bounded dynamic branching
+  - **3b** — Integrate LLM logic into Airflow tasks with full audit trail
+  - **3c** — Trigger and monitor pipeline tasks via REST + CLI
+  - **3d** — Apply guardrails so unsafe records land in quarantine
+- **Runbook**: [module3/README.md](module3/README.md)
+- **Source**:
+  - DAG — [airflow/dags/northwind_llm_enrichment.py](airflow/dags/northwind_llm_enrichment.py)
+  - Airflow client — [app/clients/airflow.py](app/clients/airflow.py)
+  - Admin endpoints — [app/main.py](app/main.py) (`/admin/airflow-*`, `/admin/disposition-summary`)
+  - Trigger payload — [data/payloads/airflow_trigger.json](data/payloads/airflow_trigger.json)
+  - Scripts — [module3/scripts/](module3/scripts/)
+  - DuckDB CLI proof — [module3/scripts/duckdb_proof.sh](module3/scripts/duckdb_proof.sh)
+- **Env check / reset**: `environment-setup/install-macos-requirements.sh`, then `./scripts/module3-demo-reset.sh`
+
+### Module 4 — Validating and guardrailing LLM outputs in data pipelines
+
+- **Clip 4 (6 min)**: Rejecting hallucinated and schema-drifted LLM outputs in Airflow
+- **Learning objectives**:
+  - **1d** — Data flow design — LLM output → validation → trusted vs quarantine
+  - **3c** — Trigger and monitor: validate-batch + Airflow UI + pipeline_runs
+  - **3d** — Guardrails: input risk, rules, reasons + callout, persisted disposition
+- **Runbook**: [module4/README.md](module4/README.md)
+- **Source**:
+  - Validation gate endpoints — [app/routers/pipeline.py](app/routers/pipeline.py) (`/pipeline/validate-batch`, `/pipeline/routing-detail`)
+  - Validation rules — [app/routers/validation.py](app/routers/validation.py), [app/validators/output_validator.py](app/validators/output_validator.py)
+  - Bad-data payload — [data/payloads/module4_validation_batch.json](data/payloads/module4_validation_batch.json)
+  - Airflow trigger override — [data/payloads/module4_airflow_trigger.json](data/payloads/module4_airflow_trigger.json)
+  - Scripts — [module4/scripts/](module4/scripts/)
+  - Batch input risk preview — [module4/scripts/batch_input_risk.sh](module4/scripts/batch_input_risk.sh)
+  - Airflow UI proof — [module4/scripts/airflow_ui_proof.sh](module4/scripts/airflow_ui_proof.sh)
+  - DuckDB CLI proof — [module4/scripts/duckdb_proof.sh](module4/scripts/duckdb_proof.sh)
+  - Course summary slide — [module4/scripts/course_summary.sh](module4/scripts/course_summary.sh)
+- **Env check / reset**: `environment-setup/install-macos-requirements.sh`, then `./scripts/module4-demo-reset.sh`
+
+### Shared environment setup
+
+A single macOS installer covers every module's dependencies (Homebrew, Python 3.12, DuckDB CLI, jq, curl, Docker Desktop, Python venv + `requirements.txt`) and runs per-module readiness checks at the end:
+
+```bash
+environment-setup/install-macos-requirements.sh
+```
+
+Run it once after cloning. The script logs every step to `environment-setup/install.log` and prints `READINESS SUMMARY` per module so you know which demos are ready to run before you touch a recording. After that, each module is reset for recording with its own `./scripts/moduleN-demo-reset.sh`.
 
 ## Quick start
 
